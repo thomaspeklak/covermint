@@ -299,18 +299,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     });
     window.set_exclusive_zone(0);
 
-    let selected_monitor = select_monitor(&config.monitor_selector);
-    if let Some(monitor) = selected_monitor.as_ref() {
-        window.set_monitor(Some(monitor));
-        eprintln!("covermint: using monitor {}", monitor_label(monitor));
-    } else {
-        eprintln!(
-            "covermint: monitor selector '{}' not found, compositor will choose",
-            config.monitor_selector
-        );
-    }
-
-    apply_placement(&window, &config, selected_monitor.as_ref());
+    let monitor_status = Rc::new(RefCell::new(None::<String>));
+    sync_window_target(&window, &config, &monitor_status);
     install_styles(&config);
 
     let primary_picture = new_artwork_picture(&config);
@@ -336,61 +326,66 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let secondary_picture_ref = secondary_picture.clone();
     let window_ref = window.clone();
     let config_ref = config.clone();
+    let monitor_status_ref = monitor_status.clone();
 
-    let refresh = move || match query_player(&config_ref.player) {
-        Some(MediaState {
-            status: PlaybackStatus::Playing,
-            art_url: Some(art_url),
-        }) => {
-            let needs_reload = current_url
-                .borrow()
-                .as_ref()
-                .map(|current| current != &art_url)
-                .unwrap_or(true);
+    let refresh = move || {
+        sync_window_target(&window_ref, &config_ref, &monitor_status_ref);
 
-            if needs_reload {
-                match download_texture(&art_url) {
-                    Some(texture) => {
-                        let has_existing_art = current_url.borrow().is_some();
-                        set_artwork_texture(
-                            &primary_picture_ref,
-                            &secondary_picture_ref,
-                            &active_slot,
-                            &transition_source,
-                            &config_ref,
-                            &texture,
-                            has_existing_art,
-                        );
-                        *current_url.borrow_mut() = Some(art_url);
-                    }
-                    None => {
-                        eprintln!("covermint: failed to download artwork");
-                        clear_artwork(
-                            &primary_picture_ref,
-                            &secondary_picture_ref,
-                            &active_slot,
-                            &transition_source,
-                            &config_ref,
-                        );
-                        *current_url.borrow_mut() = None;
-                        window_ref.set_visible(false);
-                        return;
+        match query_player(&config_ref.player) {
+            Some(MediaState {
+                status: PlaybackStatus::Playing,
+                art_url: Some(art_url),
+            }) => {
+                let needs_reload = current_url
+                    .borrow()
+                    .as_ref()
+                    .map(|current| current != &art_url)
+                    .unwrap_or(true);
+
+                if needs_reload {
+                    match download_texture(&art_url) {
+                        Some(texture) => {
+                            let has_existing_art = current_url.borrow().is_some();
+                            set_artwork_texture(
+                                &primary_picture_ref,
+                                &secondary_picture_ref,
+                                &active_slot,
+                                &transition_source,
+                                &config_ref,
+                                &texture,
+                                has_existing_art,
+                            );
+                            *current_url.borrow_mut() = Some(art_url);
+                        }
+                        None => {
+                            eprintln!("covermint: failed to download artwork");
+                            clear_artwork(
+                                &primary_picture_ref,
+                                &secondary_picture_ref,
+                                &active_slot,
+                                &transition_source,
+                                &config_ref,
+                            );
+                            *current_url.borrow_mut() = None;
+                            window_ref.set_visible(false);
+                            return;
+                        }
                     }
                 }
-            }
 
-            window_ref.set_visible(true);
-        }
-        _ => {
-            clear_artwork(
-                &primary_picture_ref,
-                &secondary_picture_ref,
-                &active_slot,
-                &transition_source,
-                &config_ref,
-            );
-            *current_url.borrow_mut() = None;
-            window_ref.set_visible(false);
+                window_ref.set_visible(true);
+            }
+            _ => {
+                clear_artwork(
+                    &primary_picture_ref,
+                    &secondary_picture_ref,
+                    &active_slot,
+                    &transition_source,
+                    &config_ref,
+                );
+                *current_url.borrow_mut() = None;
+                window_ref.set_visible(false);
+            }
         }
     };
 
@@ -644,6 +639,31 @@ fn clear_artwork(
     clear_picture(secondary, config.width, config.height);
     primary.set_opacity(1.0);
     *active_slot.borrow_mut() = ArtworkSlot::Primary;
+}
+
+fn sync_window_target(
+    window: &gtk::ApplicationWindow,
+    config: &Config,
+    monitor_status: &Rc<RefCell<Option<String>>>,
+) {
+    let selected_monitor = select_monitor(&config.monitor_selector);
+
+    if let Some(monitor) = selected_monitor.as_ref() {
+        window.set_monitor(Some(monitor));
+        let label = monitor_label(monitor);
+        if monitor_status.borrow().as_ref() != Some(&label) {
+            eprintln!("covermint: using monitor {label}");
+            *monitor_status.borrow_mut() = Some(label);
+        }
+    } else if monitor_status.borrow().as_deref() != Some("<compositor>") {
+        eprintln!(
+            "covermint: monitor selector '{}' not found, compositor will choose",
+            config.monitor_selector
+        );
+        *monitor_status.borrow_mut() = Some("<compositor>".to_string());
+    }
+
+    apply_placement(window, config, selected_monitor.as_ref());
 }
 
 fn apply_placement(

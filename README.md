@@ -92,7 +92,7 @@ cargo run --release -- --monitor auto --player auto
 ## Current limitations
 
 - the app polls instead of reacting to MPRIS signals
-- placement is computed from monitor geometry once at startup and is not yet recomputed on monitor hotplug or resolution changes
+- placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - there is no artwork cache yet
