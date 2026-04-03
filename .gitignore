@@ -1,4 +1,5 @@
 /target
+/refinement-summary.md
 
 # bv (beads viewer) local config and caches
 .bv/

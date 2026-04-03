@@ -17,21 +17,14 @@ This repo is still an early spike, but it already works for the basic flow:
 
 ## Current features
 
-- monitor selection via `--monitor auto|internal|external|<index>|<name>`
-- monitor discovery via `--list-monitors`
-- player discovery via `--list-players`
-- layer selection via `--layer background|bottom`
-- fixed artwork frame sizing via `--size`, `--width`, and `--height`
-- placement presets via `--placement`
-- per-axis offsets via `--offset-x` / `--offset-y`
-- `--margin` shorthand for matching X/Y offsets
-- translucent border styling via `--border-width`, `--border-color`, `--corner-radius`, and `--opacity`
-- artwork transitions via `--transition` and `--transition-ms`, with eased timing
-- local artwork caching for repeated remote URLs, with `--no-cache` support when desired
-- support for `file://` artwork URLs exposed by MPRIS players
-- player selection via `--player` (defaults to `auto`)
-- configurable polling interval via `--poll-seconds`
-- optional paused-state visibility via `--show-paused`
+- flexible monitor targeting and discovery, including `auto`, `internal`, `external`, numeric indices, and field-based name matching
+- fixed artwork frame sizing and placement controls for presets, per-axis offsets, and symmetric margins
+- styling controls for borders, rounded corners, layer selection, and overall artwork opacity
+- `none`, `fade`, and `flip` transitions with configurable timing and eased motion
+- local caching for remote artwork plus support for `file://` artwork URLs exposed by MPRIS players
+- player selection/discovery, configurable polling, and optional paused-state visibility
+
+For the exact flag surface, use the **CLI reference** below.
 
 ## Requirements
 
@@ -70,7 +63,7 @@ cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement b
 cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)' --corner-radius 18 --opacity 0.92
 cargo run --release -- --monitor auto --transition fade --transition-ms 220
 cargo run --release -- --monitor auto --transition flip --transition-ms 220
-cargo run --release -- --monitor auto --player spotify --poll-seconds 2
+cargo run --release -- --monitor auto --player vlc --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
 cargo run --release -- --monitor auto --show-paused
 cargo run --release -- --monitor auto --no-cache
@@ -78,14 +71,17 @@ cargo run --release -- --monitor auto --no-cache
 
 ## CLI reference
 
+This is the authoritative per-flag reference; the earlier sections stay higher level on purpose.
+
 ```text
---monitor auto|internal|external|<index>|<name>
-                           Pick a monitor by alias, list index, connector, or matching description
+--monitor auto|internal|external|<index>|#<index>|<name>
+                           Pick a monitor by alias, list index (0 or #0), connector, manufacturer, or model substring
 --player auto|<name>        MPRIS player name passed to playerctl; auto uses the active/default player
 --size <px>                 Shorthand for setting both --width and --height
 --width <px>                Artwork width in pixels
 --height <px>               Artwork height in pixels
 --placement <preset>        One of: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right
+                           Also accepts aliases like tl, tc, tr, cl, cr, bl, bc, br, and middle
 --offset-x <px>             Horizontal offset; positive moves inward from the chosen side or away from center
 --offset-y <px>             Vertical offset; positive moves inward from the chosen side or away from center
 --margin <px>               Shorthand for setting both --offset-x and --offset-y
@@ -101,7 +97,10 @@ cargo run --release -- --monitor auto --no-cache
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
 --list-players              Print detected MPRIS player names and exit
+--help, -h                  Print usage and exit successfully
 ```
+
+`auto` prefers an internal monitor and otherwise falls back to the first detected monitor. `external` prefers the first non-internal monitor and otherwise also falls back to the first detected monitor. If an explicit monitor selector cannot be resolved, Covermint lets the compositor choose and logs that fallback. Use `--list-monitors` to see the connector and model/manufacturer strings that matching can target.
 
 ## Current limitations
 
@@ -126,6 +125,7 @@ An example systemd user unit is included at:
 Suggested setup:
 
 ```bash
+cargo install --path . --root ~/.local
 mkdir -p ~/.config/systemd/user
 cp contrib/systemd/covermint.service ~/.config/systemd/user/
 $EDITOR ~/.config/systemd/user/covermint.service
@@ -133,11 +133,11 @@ systemctl --user daemon-reload
 systemctl --user enable --now covermint.service
 ```
 
-You will probably want to customize the `ExecStart=` line for your monitor, placement, size, transition settings, and binary path.
+The example unit uses `%h/.local/bin/covermint`, which resolves to `~/.local/bin/covermint` for a user service. You will probably want to customize the `ExecStart=` line for your monitor, placement, size, transition settings, and binary path.
 
 ## Ticket tracking with Beads
 
-This project now uses **Beads** for local ticket tracking.
+This project uses **Beads** for local ticket tracking.
 
 Useful commands:
 
@@ -145,47 +145,13 @@ Useful commands:
 br list
 br ready
 br show sp-czm
-br show sp-czm.2
+br show <id>
 ```
 
-Seeded tickets:
-
-- `sp-czm.1` — remove system-specific assumptions and odd dependencies ✅
-- `sp-czm.2` — add custom placement controls ✅
-- `sp-czm.3` — add an extensible transition system ✅
-- `sp-czm.4` — support borders with transparency ✅
-- `sp-czm.5` — improve custom sizing controls ✅
-- `sp-czm.6` — write a polished README ✅
-- `sp-czm.7` — rename the project to Covermint
-- `sp-czm.8` — add flip transition mode ✅
-- `sp-czm.11` — cache artwork locally ✅
-- `sp-czm.12` — add example user service ✅
-- `sp-czm.13` — trim artwork cache ✅
-- `sp-czm.15` — support file:// artwork URLs ✅
-- `sp-czm.16` — add internal/external monitor aliases ✅
-- `sp-czm.17` — optionally keep artwork visible while paused ✅
-- `sp-czm.18` — add configurable corner radius ✅
-- `sp-czm.19` — add player discovery command ✅
-- `sp-czm.20` — allow disabling remote artwork cache ✅
-- `sp-czm.21` — add overall artwork opacity control ✅
-- `sp-czm.22` — allow monitor selection by index ✅
-- `sp-czm.23` — keep artwork window size stable across images ✅
-- `sp-czm.24` — constrain artwork to fixed frame bounds ✅
+The live Beads backlog is the source of truth, so prefer those commands over copying ticket status into the README.
 
 To add more work:
 
 ```bash
 br create --title "Your feature here" --type feature --priority P2
 ```
-
-## Near-term roadmap
-
-The next round of improvements is focused on making `covermint` feel less like a machine-specific spike and more like a configurable desktop widget:
-
-1. rename cleanup
-2. portability cleanup
-3. placement controls
-4. small but extensible transitions
-5. border and transparency styling
-6. better sizing UX
-7. continued documentation cleanup

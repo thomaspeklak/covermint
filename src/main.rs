@@ -11,6 +11,8 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
+const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
+
 #[derive(Clone, Debug)]
 struct Config {
     monitor_selector: String,
@@ -30,8 +32,14 @@ struct Config {
     show_paused: bool,
     cache_enabled: bool,
     layer: ShellLayer,
-    list_monitors: bool,
-    list_players: bool,
+}
+
+#[derive(Clone, Debug)]
+enum StartupAction {
+    Help,
+    ListMonitors,
+    ListPlayers,
+    Run(Config),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -87,50 +95,51 @@ enum PlaybackStatus {
 }
 
 fn main() -> glib::ExitCode {
-    let config = match Config::from_env() {
-        Ok(config) => config,
+    let action = match StartupAction::from_env() {
+        Ok(action) => action,
         Err(message) => {
             eprintln!("{message}");
-            eprintln!(
-                "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players]"
-            );
+            eprintln!("{USAGE}");
             return glib::ExitCode::FAILURE;
         }
     };
+
+    if matches!(&action, StartupAction::Help) {
+        println!("{USAGE}");
+        return glib::ExitCode::SUCCESS;
+    }
 
     let app = gtk::Application::builder()
         .application_id("dev.tgz.covermint")
         .build();
 
-    let config = Rc::new(config);
-    app.connect_activate(move |app| {
-        if config.list_monitors {
+    app.connect_activate(move |app| match &action {
+        StartupAction::Help => app.quit(),
+        StartupAction::ListMonitors => {
             list_monitors();
             app.quit();
-            return;
         }
-
-        if config.list_players {
+        StartupAction::ListPlayers => {
             list_players();
             app.quit();
-            return;
         }
+        StartupAction::Run(config) => {
+            if !gtk4_layer_shell::is_supported() {
+                eprintln!("gtk4-layer-shell is not supported by this compositor/session");
+                app.quit();
+                return;
+            }
 
-        if !gtk4_layer_shell::is_supported() {
-            eprintln!("gtk4-layer-shell is not supported by this compositor/session");
-            app.quit();
-            return;
+            build_ui(app, Rc::new(config.clone()));
         }
-
-        build_ui(app, config.clone());
     });
 
     app.run_with_args(&["covermint"])
 }
 
-impl Config {
-    fn from_env() -> Result<Self, String> {
-        let mut config = Self {
+impl Default for Config {
+    fn default() -> Self {
+        Self {
             monitor_selector: "auto".to_string(),
             player: "auto".to_string(),
             width: 420,
@@ -148,9 +157,15 @@ impl Config {
             show_paused: false,
             cache_enabled: true,
             layer: ShellLayer::Background,
-            list_monitors: false,
-            list_players: false,
-        };
+        }
+    }
+}
+
+impl StartupAction {
+    fn from_env() -> Result<Self, String> {
+        let mut config = Config::default();
+        let mut list_monitors = false;
+        let mut list_players = false;
 
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -214,14 +229,22 @@ impl Config {
                         }
                     }
                 }
-                "--list-monitors" => config.list_monitors = true,
-                "--list-players" => config.list_players = true,
-                "--help" | "-h" => return Err("".to_string()),
+                "--list-monitors" => list_monitors = true,
+                "--list-players" => list_players = true,
+                "--help" | "-h" => return Ok(Self::Help),
                 other => return Err(format!("unknown argument: {other}")),
             }
         }
 
-        Ok(config)
+        if list_monitors {
+            return Ok(Self::ListMonitors);
+        }
+
+        if list_players {
+            return Ok(Self::ListPlayers);
+        }
+
+        Ok(Self::Run(config))
     }
 }
 
@@ -412,15 +435,15 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                         }
                         None => {
                             eprintln!("covermint: failed to download artwork");
-                            clear_artwork(
+                            clear_artwork_and_hide(
+                                &window_ref,
+                                &current_url,
                                 &primary_picture_ref,
                                 &secondary_picture_ref,
                                 &active_slot,
                                 &transition_source,
                                 &config_ref,
                             );
-                            *current_url.borrow_mut() = None;
-                            window_ref.set_visible(false);
                             return;
                         }
                     }
@@ -428,17 +451,15 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
                 window_ref.set_visible(true);
             }
-            _ => {
-                clear_artwork(
-                    &primary_picture_ref,
-                    &secondary_picture_ref,
-                    &active_slot,
-                    &transition_source,
-                    &config_ref,
-                );
-                *current_url.borrow_mut() = None;
-                window_ref.set_visible(false);
-            }
+            _ => clear_artwork_and_hide(
+                &window_ref,
+                &current_url,
+                &primary_picture_ref,
+                &secondary_picture_ref,
+                &active_slot,
+                &transition_source,
+                &config_ref,
+            ),
         }
     };
 
@@ -699,6 +720,20 @@ fn clear_artwork(
     *active_slot.borrow_mut() = ArtworkSlot::Primary;
 }
 
+fn clear_artwork_and_hide(
+    window: &gtk::ApplicationWindow,
+    current_url: &Rc<RefCell<Option<String>>>,
+    primary: &gtk::Picture,
+    secondary: &gtk::Picture,
+    active_slot: &Rc<RefCell<ArtworkSlot>>,
+    transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
+    config: &Config,
+) {
+    clear_artwork(primary, secondary, active_slot, transition_source, config);
+    *current_url.borrow_mut() = None;
+    window.set_visible(false);
+}
+
 fn sync_window_target(
     window: &gtk::ApplicationWindow,
     config: &Config,
@@ -747,10 +782,7 @@ fn apply_placement(
             config.offset_y,
         );
 
-        window.set_anchor(Edge::Left, true);
-        window.set_anchor(Edge::Top, true);
-        window.set_margin(Edge::Left, x);
-        window.set_margin(Edge::Top, y);
+        set_window_anchor_and_margin(window, Edge::Left, Edge::Top, x, y);
         return;
     }
 
@@ -764,6 +796,19 @@ fn reset_window_position(window: &gtk::ApplicationWindow) {
     }
 }
 
+fn set_window_anchor_and_margin(
+    window: &gtk::ApplicationWindow,
+    horizontal_edge: Edge,
+    vertical_edge: Edge,
+    x: i32,
+    y: i32,
+) {
+    window.set_anchor(horizontal_edge, true);
+    window.set_anchor(vertical_edge, true);
+    window.set_margin(horizontal_edge, x);
+    window.set_margin(vertical_edge, y);
+}
+
 fn axis_offset(alignment: AxisPlacement, available: i32, size: i32, offset: i32) -> i32 {
     match alignment {
         AxisPlacement::Start => offset,
@@ -775,38 +820,53 @@ fn axis_offset(alignment: AxisPlacement, available: i32, size: i32, offset: i32)
 fn apply_anchor_fallback(window: &gtk::ApplicationWindow, config: &Config) {
     match config.placement {
         Placement::TopLeft => {
-            window.set_anchor(Edge::Left, true);
-            window.set_anchor(Edge::Top, true);
-            window.set_margin(Edge::Left, config.offset_x);
-            window.set_margin(Edge::Top, config.offset_y);
+            set_window_anchor_and_margin(
+                window,
+                Edge::Left,
+                Edge::Top,
+                config.offset_x,
+                config.offset_y,
+            );
         }
         Placement::TopRight => {
-            window.set_anchor(Edge::Right, true);
-            window.set_anchor(Edge::Top, true);
-            window.set_margin(Edge::Right, config.offset_x);
-            window.set_margin(Edge::Top, config.offset_y);
+            set_window_anchor_and_margin(
+                window,
+                Edge::Right,
+                Edge::Top,
+                config.offset_x,
+                config.offset_y,
+            );
         }
         Placement::BottomLeft => {
-            window.set_anchor(Edge::Left, true);
-            window.set_anchor(Edge::Bottom, true);
-            window.set_margin(Edge::Left, config.offset_x);
-            window.set_margin(Edge::Bottom, config.offset_y);
+            set_window_anchor_and_margin(
+                window,
+                Edge::Left,
+                Edge::Bottom,
+                config.offset_x,
+                config.offset_y,
+            );
         }
         Placement::BottomRight => {
-            window.set_anchor(Edge::Right, true);
-            window.set_anchor(Edge::Bottom, true);
-            window.set_margin(Edge::Right, config.offset_x);
-            window.set_margin(Edge::Bottom, config.offset_y);
+            set_window_anchor_and_margin(
+                window,
+                Edge::Right,
+                Edge::Bottom,
+                config.offset_x,
+                config.offset_y,
+            );
         }
         placement => {
             eprintln!(
                 "covermint: placement '{}' needs monitor geometry; falling back to top-left because the monitor could not be resolved",
                 placement.label()
             );
-            window.set_anchor(Edge::Left, true);
-            window.set_anchor(Edge::Top, true);
-            window.set_margin(Edge::Left, config.offset_x);
-            window.set_margin(Edge::Top, config.offset_y);
+            set_window_anchor_and_margin(
+                window,
+                Edge::Left,
+                Edge::Top,
+                config.offset_x,
+                config.offset_y,
+            );
         }
     }
 }
@@ -830,30 +890,40 @@ fn install_styles(config: &Config) {
     }
 }
 
+fn collect_monitors(display: &gdk::Display) -> Vec<gdk::Monitor> {
+    let monitors = display.monitors();
+    let mut all = Vec::new();
+
+    for index in 0..monitors.n_items() {
+        if let Some(item) = monitors.item(index) {
+            if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
+                all.push(monitor);
+            }
+        }
+    }
+
+    all
+}
+
 fn list_monitors() {
     match gdk::Display::default() {
         Some(display) => {
-            let monitors = display.monitors();
-            for index in 0..monitors.n_items() {
-                if let Some(item) = monitors.item(index) {
-                    if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
-                        let geometry = monitor.geometry();
-                        let role = if monitor_is_internal(&monitor) {
-                            "internal"
-                        } else {
-                            "external"
-                        };
-                        println!(
-                            "#{index}: {} ({role}) [{}x{}+{}+{} scale={}]",
-                            monitor_label(&monitor),
-                            geometry.width(),
-                            geometry.height(),
-                            geometry.x(),
-                            geometry.y(),
-                            monitor.scale_factor()
-                        );
-                    }
-                }
+            for (index, monitor) in collect_monitors(&display).into_iter().enumerate() {
+                let geometry = monitor.geometry();
+                let role = if monitor_is_internal(&monitor) {
+                    "internal"
+                } else {
+                    "external"
+                };
+                println!(
+                    "#{index}: {} ({role}) [{}x{}+{}+{} scale={}]",
+                    monitor_label(&monitor),
+                    geometry.width(),
+                    geometry.height(),
+                    geometry.x(),
+                    geometry.y(),
+                    monitor.scale_factor()
+                );
             }
         }
         None => eprintln!("covermint: no GTK display available"),
@@ -869,16 +939,7 @@ fn list_players() {
 
 fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
     let display = gdk::Display::default()?;
-    let monitors = display.monitors();
-    let mut all = Vec::new();
-
-    for index in 0..monitors.n_items() {
-        if let Some(item) = monitors.item(index) {
-            if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
-                all.push(monitor);
-            }
-        }
-    }
+    let all = collect_monitors(&display);
 
     if all.is_empty() {
         return None;
@@ -914,14 +975,9 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
 
     let needle = selector.to_ascii_lowercase();
     all.into_iter().find(|monitor| {
-        [
-            monitor.connector().map(|v| v.to_string()),
-            monitor.manufacturer().map(|v| v.to_string()),
-            monitor.model().map(|v| v.to_string()),
-        ]
-        .into_iter()
-        .flatten()
-        .any(|value| value.to_ascii_lowercase().contains(&needle))
+        monitor_search_terms(monitor)
+            .into_iter()
+            .any(|value| value.to_ascii_lowercase().contains(&needle))
     })
 }
 
@@ -937,19 +993,40 @@ fn is_internal_connector(connector: &str) -> bool {
     lower.starts_with("edp") || lower.starts_with("lvds") || lower.starts_with("dsi")
 }
 
-fn monitor_label(monitor: &gdk::Monitor) -> String {
+fn monitor_description(monitor: &gdk::Monitor) -> Option<String> {
+    match (
+        monitor.manufacturer().map(|value| value.to_string()),
+        monitor.model().map(|value| value.to_string()),
+    ) {
+        (Some(manufacturer), Some(model)) => Some(format!("{manufacturer} {model}")),
+        (Some(manufacturer), None) => Some(manufacturer),
+        (None, Some(model)) => Some(model),
+        (None, None) => None,
+    }
+}
+
+fn monitor_search_terms(monitor: &gdk::Monitor) -> Vec<String> {
     let connector = monitor.connector().map(|value| value.to_string());
+    let description = monitor_description(monitor);
     let manufacturer = monitor.manufacturer().map(|value| value.to_string());
     let model = monitor.model().map(|value| value.to_string());
 
-    [
-        connector,
-        manufacturer.zip(model).map(|(a, b)| format!("{a} {b}")),
-    ]
-    .into_iter()
-    .flatten()
-    .next()
-    .unwrap_or_else(|| "unknown monitor".to_string())
+    [connector, description, manufacturer, model]
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+fn monitor_label(monitor: &gdk::Monitor) -> String {
+    match (
+        monitor.connector().map(|value| value.to_string()),
+        monitor_description(monitor),
+    ) {
+        (Some(connector), Some(description)) => format!("{connector} — {description}"),
+        (Some(connector), None) => connector,
+        (None, Some(description)) => description,
+        (None, None) => "unknown monitor".to_string(),
+    }
 }
 
 fn query_player(player: &str) -> Option<MediaState> {
