@@ -407,6 +407,37 @@ fn new_artwork_picture(config: &Config) -> gtk::Picture {
     picture
 }
 
+fn run_playerctl<'a>(player: &'a str, args: &[&'a str]) -> Option<String> {
+    let mut command_args = Vec::with_capacity(args.len() + 2);
+    if !player.eq_ignore_ascii_case("auto") {
+        command_args.extend(["-p", player]);
+    }
+    command_args.extend(args.iter().copied());
+    run_command("playerctl", &command_args)
+}
+
+fn active_picture_pair(
+    primary: &gtk::Picture,
+    secondary: &gtk::Picture,
+    slot: ArtworkSlot,
+) -> (gtk::Picture, gtk::Picture) {
+    match slot {
+        ArtworkSlot::Primary => (primary.clone(), secondary.clone()),
+        ArtworkSlot::Secondary => (secondary.clone(), primary.clone()),
+    }
+}
+
+fn stop_transition(transition_source: &Rc<RefCell<Option<glib::SourceId>>>) {
+    if let Some(source_id) = transition_source.borrow_mut().take() {
+        source_id.remove();
+    }
+}
+
+fn clear_picture(picture: &gtk::Picture) {
+    picture.set_paintable(Option::<&gdk::Texture>::None);
+    picture.set_opacity(0.0);
+}
+
 fn set_artwork_texture(
     primary: &gtk::Picture,
     secondary: &gtk::Picture,
@@ -416,20 +447,14 @@ fn set_artwork_texture(
     texture: &gdk::Texture,
     animate: bool,
 ) {
-    if let Some(source_id) = transition_source.borrow_mut().take() {
-        source_id.remove();
-    }
+    stop_transition(transition_source);
 
     if !animate || config.transition == Transition::None || config.transition_ms == 0 {
-        let slot = *active_slot.borrow();
-        let (active_picture, inactive_picture) = match slot {
-            ArtworkSlot::Primary => (primary, secondary),
-            ArtworkSlot::Secondary => (secondary, primary),
-        };
+        let (active_picture, inactive_picture) =
+            active_picture_pair(primary, secondary, *active_slot.borrow());
         active_picture.set_paintable(Some(texture));
         active_picture.set_opacity(1.0);
-        inactive_picture.set_opacity(0.0);
-        inactive_picture.set_paintable(Option::<&gdk::Texture>::None);
+        clear_picture(&inactive_picture);
         return;
     }
 
@@ -438,10 +463,7 @@ fn set_artwork_texture(
         ArtworkSlot::Primary => ArtworkSlot::Secondary,
         ArtworkSlot::Secondary => ArtworkSlot::Primary,
     };
-    let (from_picture, to_picture) = match current_slot {
-        ArtworkSlot::Primary => (primary.clone(), secondary.clone()),
-        ArtworkSlot::Secondary => (secondary.clone(), primary.clone()),
-    };
+    let (from_picture, to_picture) = active_picture_pair(primary, secondary, current_slot);
 
     to_picture.set_paintable(Some(texture));
     to_picture.set_opacity(0.0);
@@ -458,8 +480,7 @@ fn set_artwork_texture(
         from_picture.set_opacity(1.0 - progress);
 
         if progress >= 1.0 {
-            from_picture.set_opacity(0.0);
-            from_picture.set_paintable(Option::<&gdk::Texture>::None);
+            clear_picture(&from_picture);
             to_picture.set_opacity(1.0);
             *active_slot.borrow_mut() = next_slot;
             *transition_source.borrow_mut() = None;
@@ -478,14 +499,11 @@ fn clear_artwork(
     active_slot: &Rc<RefCell<ArtworkSlot>>,
     transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
 ) {
-    if let Some(source_id) = transition_source.borrow_mut().take() {
-        source_id.remove();
-    }
+    stop_transition(transition_source);
 
-    primary.set_paintable(Option::<&gdk::Texture>::None);
-    secondary.set_paintable(Option::<&gdk::Texture>::None);
+    clear_picture(primary);
+    clear_picture(secondary);
     primary.set_opacity(1.0);
-    secondary.set_opacity(0.0);
     *active_slot.borrow_mut() = ArtworkSlot::Primary;
 }
 
@@ -682,25 +700,16 @@ fn monitor_label(monitor: &gdk::Monitor) -> String {
 }
 
 fn query_player(player: &str) -> Option<MediaState> {
-    let auto_player = player.eq_ignore_ascii_case("auto");
-    let status = if auto_player {
-        run_command("playerctl", &["status"])?
-    } else {
-        run_command("playerctl", &["-p", player, "status"])?
-    };
+    let status = run_playerctl(player, &["status"])?;
     let status = if status.trim() == "Playing" {
         PlaybackStatus::Playing
     } else {
         PlaybackStatus::NotPlaying
     };
 
-    let art_url = if auto_player {
-        run_command("playerctl", &["metadata", "mpris:artUrl"])
-    } else {
-        run_command("playerctl", &["-p", player, "metadata", "mpris:artUrl"])
-    }
-    .map(|value| value.trim().to_string())
-    .filter(|value| !value.is_empty());
+    let art_url = run_playerctl(player, &["metadata", "mpris:artUrl"])
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
 
     Some(MediaState { status, art_url })
 }
