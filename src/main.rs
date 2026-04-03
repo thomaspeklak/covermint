@@ -48,6 +48,18 @@ enum ShellLayer {
     Bottom,
 }
 
+impl ShellLayer {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "background" => Ok(Self::Background),
+            "bottom" => Ok(Self::Bottom),
+            other => Err(format!(
+                "unsupported --layer value '{other}', expected background or bottom"
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Placement {
     TopLeft,
@@ -81,17 +93,32 @@ enum ArtworkSlot {
     Secondary,
 }
 
+impl ArtworkSlot {
+    fn other(self) -> Self {
+        match self {
+            Self::Primary => Self::Secondary,
+            Self::Secondary => Self::Primary,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct MediaState {
     status: PlaybackStatus,
     art_url: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlaybackStatus {
     Playing,
     Paused,
     NotPlaying,
+}
+
+impl PlaybackStatus {
+    fn should_show_artwork(self, show_paused: bool) -> bool {
+        self == Self::Playing || (show_paused && self == Self::Paused)
+    }
 }
 
 fn main() -> glib::ExitCode {
@@ -218,17 +245,7 @@ impl StartupAction {
                 }
                 "--show-paused" => config.show_paused = true,
                 "--no-cache" => config.cache_enabled = false,
-                "--layer" => {
-                    config.layer = match next_arg(&mut args, "--layer")?.as_str() {
-                        "background" => ShellLayer::Background,
-                        "bottom" => ShellLayer::Bottom,
-                        value => {
-                            return Err(format!(
-                                "unsupported --layer value '{value}', expected background or bottom"
-                            ));
-                        }
-                    }
-                }
+                "--layer" => config.layer = ShellLayer::parse(&next_arg(&mut args, "--layer")?)?,
                 "--list-monitors" => list_monitors = true,
                 "--list-players" => list_players = true,
                 "--help" | "-h" => return Ok(Self::Help),
@@ -306,6 +323,16 @@ impl Placement {
             Self::BottomLeft => "bottom-left",
             Self::Bottom => "bottom",
             Self::BottomRight => "bottom-right",
+        }
+    }
+
+    fn fallback_anchor_edges(self) -> Option<(Edge, Edge)> {
+        match self {
+            Self::TopLeft => Some((Edge::Left, Edge::Top)),
+            Self::TopRight => Some((Edge::Right, Edge::Top)),
+            Self::BottomLeft => Some((Edge::Left, Edge::Bottom)),
+            Self::BottomRight => Some((Edge::Right, Edge::Bottom)),
+            Self::Top | Self::Left | Self::Center | Self::Right | Self::Bottom => None,
         }
     }
 }
@@ -409,9 +436,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
             Some(MediaState {
                 status,
                 art_url: Some(art_url),
-            }) if status == PlaybackStatus::Playing
-                || (config_ref.show_paused && status == PlaybackStatus::Paused) =>
-            {
+            }) if status.should_show_artwork(config_ref.show_paused) => {
                 let needs_reload = current_url
                     .borrow()
                     .as_ref()
@@ -623,32 +648,30 @@ fn clear_picture(picture: &gtk::Picture, width: i32, height: i32) {
     reset_picture_size(picture, width, height);
 }
 
-fn set_artwork_texture(
+fn set_artwork_texture_immediate(
+    primary: &gtk::Picture,
+    secondary: &gtk::Picture,
+    active_slot: ArtworkSlot,
+    config: &Config,
+    texture: &gdk::Texture,
+) {
+    let (active_picture, inactive_picture) = active_picture_pair(primary, secondary, active_slot);
+    reset_picture_size(&active_picture, config.width, config.height);
+    active_picture.set_paintable(Some(texture));
+    active_picture.set_opacity(1.0);
+    clear_picture(&inactive_picture, config.width, config.height);
+}
+
+fn animate_artwork_transition(
     primary: &gtk::Picture,
     secondary: &gtk::Picture,
     active_slot: &Rc<RefCell<ArtworkSlot>>,
     transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
     config: &Config,
     texture: &gdk::Texture,
-    animate: bool,
 ) {
-    stop_transition(transition_source);
-
-    if !animate || config.transition == Transition::None || config.transition_ms == 0 {
-        let (active_picture, inactive_picture) =
-            active_picture_pair(primary, secondary, *active_slot.borrow());
-        reset_picture_size(&active_picture, config.width, config.height);
-        active_picture.set_paintable(Some(texture));
-        active_picture.set_opacity(1.0);
-        clear_picture(&inactive_picture, config.width, config.height);
-        return;
-    }
-
     let current_slot = *active_slot.borrow();
-    let next_slot = match current_slot {
-        ArtworkSlot::Primary => ArtworkSlot::Secondary,
-        ArtworkSlot::Secondary => ArtworkSlot::Primary,
-    };
+    let next_slot = current_slot.other();
     let (from_picture, to_picture) = active_picture_pair(primary, secondary, current_slot);
 
     to_picture.set_paintable(Some(texture));
@@ -703,6 +726,32 @@ fn set_artwork_texture(
     });
 
     *transition_source.borrow_mut() = Some(source_id);
+}
+
+fn set_artwork_texture(
+    primary: &gtk::Picture,
+    secondary: &gtk::Picture,
+    active_slot: &Rc<RefCell<ArtworkSlot>>,
+    transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
+    config: &Config,
+    texture: &gdk::Texture,
+    animate: bool,
+) {
+    stop_transition(transition_source);
+
+    if !animate || config.transition == Transition::None || config.transition_ms == 0 {
+        set_artwork_texture_immediate(primary, secondary, *active_slot.borrow(), config, texture);
+        return;
+    }
+
+    animate_artwork_transition(
+        primary,
+        secondary,
+        active_slot,
+        transition_source,
+        config,
+        texture,
+    );
 }
 
 fn clear_artwork(
@@ -818,57 +867,24 @@ fn axis_offset(alignment: AxisPlacement, available: i32, size: i32, offset: i32)
 }
 
 fn apply_anchor_fallback(window: &gtk::ApplicationWindow, config: &Config) {
-    match config.placement {
-        Placement::TopLeft => {
-            set_window_anchor_and_margin(
-                window,
-                Edge::Left,
-                Edge::Top,
-                config.offset_x,
-                config.offset_y,
-            );
-        }
-        Placement::TopRight => {
-            set_window_anchor_and_margin(
-                window,
-                Edge::Right,
-                Edge::Top,
-                config.offset_x,
-                config.offset_y,
-            );
-        }
-        Placement::BottomLeft => {
-            set_window_anchor_and_margin(
-                window,
-                Edge::Left,
-                Edge::Bottom,
-                config.offset_x,
-                config.offset_y,
-            );
-        }
-        Placement::BottomRight => {
-            set_window_anchor_and_margin(
-                window,
-                Edge::Right,
-                Edge::Bottom,
-                config.offset_x,
-                config.offset_y,
-            );
-        }
-        placement => {
+    let (horizontal_edge, vertical_edge) = match config.placement.fallback_anchor_edges() {
+        Some(edges) => edges,
+        None => {
             eprintln!(
                 "covermint: placement '{}' needs monitor geometry; falling back to top-left because the monitor could not be resolved",
-                placement.label()
+                config.placement.label()
             );
-            set_window_anchor_and_margin(
-                window,
-                Edge::Left,
-                Edge::Top,
-                config.offset_x,
-                config.offset_y,
-            );
+            (Edge::Left, Edge::Top)
         }
-    }
+    };
+
+    set_window_anchor_and_margin(
+        window,
+        horizontal_edge,
+        vertical_edge,
+        config.offset_x,
+        config.offset_y,
+    );
 }
 
 fn install_styles(config: &Config) {
@@ -981,10 +997,19 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
     })
 }
 
+fn monitor_parts(monitor: &gdk::Monitor) -> (Option<String>, Option<String>, Option<String>) {
+    (
+        monitor.connector().map(|value| value.to_string()),
+        monitor.manufacturer().map(|value| value.to_string()),
+        monitor.model().map(|value| value.to_string()),
+    )
+}
+
 fn monitor_is_internal(monitor: &gdk::Monitor) -> bool {
-    monitor
-        .connector()
-        .map(|connector| is_internal_connector(connector.as_str()))
+    let (connector, _, _) = monitor_parts(monitor);
+    connector
+        .as_deref()
+        .map(is_internal_connector)
         .unwrap_or(false)
 }
 
@@ -994,10 +1019,8 @@ fn is_internal_connector(connector: &str) -> bool {
 }
 
 fn monitor_description(monitor: &gdk::Monitor) -> Option<String> {
-    match (
-        monitor.manufacturer().map(|value| value.to_string()),
-        monitor.model().map(|value| value.to_string()),
-    ) {
+    let (_, manufacturer, model) = monitor_parts(monitor);
+    match (manufacturer, model) {
         (Some(manufacturer), Some(model)) => Some(format!("{manufacturer} {model}")),
         (Some(manufacturer), None) => Some(manufacturer),
         (None, Some(model)) => Some(model),
@@ -1006,10 +1029,8 @@ fn monitor_description(monitor: &gdk::Monitor) -> Option<String> {
 }
 
 fn monitor_search_terms(monitor: &gdk::Monitor) -> Vec<String> {
-    let connector = monitor.connector().map(|value| value.to_string());
+    let (connector, manufacturer, model) = monitor_parts(monitor);
     let description = monitor_description(monitor);
-    let manufacturer = monitor.manufacturer().map(|value| value.to_string());
-    let model = monitor.model().map(|value| value.to_string());
 
     [connector, description, manufacturer, model]
         .into_iter()
@@ -1018,10 +1039,8 @@ fn monitor_search_terms(monitor: &gdk::Monitor) -> Vec<String> {
 }
 
 fn monitor_label(monitor: &gdk::Monitor) -> String {
-    match (
-        monitor.connector().map(|value| value.to_string()),
-        monitor_description(monitor),
-    ) {
+    let (connector, _, _) = monitor_parts(monitor);
+    match (connector, monitor_description(monitor)) {
         (Some(connector), Some(description)) => format!("{connector} — {description}"),
         (Some(connector), None) => connector,
         (None, Some(description)) => description,
