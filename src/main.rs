@@ -86,7 +86,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -781,8 +781,13 @@ fn list_monitors() {
                 if let Some(item) = monitors.item(index) {
                     if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
                         let geometry = monitor.geometry();
+                        let role = if monitor_is_internal(&monitor) {
+                            "internal"
+                        } else {
+                            "external"
+                        };
                         println!(
-                            "#{index}: {} [{}x{}+{}+{} scale={}]",
+                            "#{index}: {} ({role}) [{}x{}+{}+{} scale={}]",
                             monitor_label(&monitor),
                             geometry.width(),
                             geometry.height(),
@@ -815,15 +820,20 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
         return None;
     }
 
-    if selector.eq_ignore_ascii_case("auto") {
+    if selector.eq_ignore_ascii_case("auto") || selector.eq_ignore_ascii_case("internal") {
+        let internal = all.iter().find(|monitor| monitor_is_internal(monitor));
+
+        if selector.eq_ignore_ascii_case("internal") {
+            return internal.cloned();
+        }
+
+        return internal.cloned().or_else(|| all.first().cloned());
+    }
+
+    if selector.eq_ignore_ascii_case("external") {
         return all
             .iter()
-            .find(|monitor| {
-                monitor
-                    .connector()
-                    .map(|connector| is_internal_connector(connector.as_str()))
-                    .unwrap_or(false)
-            })
+            .find(|monitor| !monitor_is_internal(monitor))
             .cloned()
             .or_else(|| all.first().cloned());
     }
@@ -839,6 +849,13 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
         .flatten()
         .any(|value| value.to_ascii_lowercase().contains(&needle))
     })
+}
+
+fn monitor_is_internal(monitor: &gdk::Monitor) -> bool {
+    monitor
+        .connector()
+        .map(|connector| is_internal_connector(connector.as_str()))
+        .unwrap_or(false)
 }
 
 fn is_internal_connector(connector: &str) -> bool {

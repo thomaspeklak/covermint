@@ -17,7 +17,7 @@ This repo is still an early spike, but it already works for the basic flow:
 
 ## Current features
 
-- monitor selection via `--monitor auto|<name>`
+- monitor selection via `--monitor auto|internal|external|<name>`
 - monitor discovery via `--list-monitors`
 - layer selection via `--layer background|bottom`
 - sizing via `--size`, `--width`, and `--height`
@@ -60,7 +60,7 @@ Useful examples:
 
 ```bash
 cargo run --release -- --monitor auto --layer background
-cargo run --release -- --monitor eDP-1 --placement top-left --margin 32
+cargo run --release -- --monitor internal --placement top-left --margin 32
 cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)'
@@ -73,7 +73,8 @@ cargo run --release -- --monitor auto --player auto
 ## CLI reference
 
 ```text
---monitor auto|<name>       Pick a monitor by connector or matching description
+--monitor auto|internal|external|<name>
+                           Pick a monitor by alias, connector, or matching description
 --player auto|<name>        MPRIS player name passed to playerctl; auto uses the active/default player
 --size <px>                 Shorthand for setting both --width and --height
 --width <px>                Artwork width in pixels
@@ -148,6 +149,7 @@ Seeded tickets:
 - `sp-czm.12` — add example user service ✅
 - `sp-czm.13` — trim artwork cache ✅
 - `sp-czm.15` — support file:// artwork URLs ✅
+- `sp-czm.16` — add internal/external monitor aliases ✅
 
 To add more work:
 
