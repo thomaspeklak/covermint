@@ -101,6 +101,26 @@ cargo run --release -- --monitor auto --player auto
 - more transitions can be added on top of the transition hook
 - more advanced styling controls are still pending
 
+## Running as a user service
+
+An example systemd user unit is included at:
+
+- `contrib/systemd/covermint.service`
+
+Suggested setup:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp contrib/systemd/covermint.service ~/.config/systemd/user/
+$EDITOR ~/.config/systemd/user/covermint.service
+systemctl --user daemon-reload
+systemctl --user enable --now covermint.service
+```
+
+You will probably want to customize the `ExecStart=` line for your monitor, placement, size, and transition settings.
+
+If your binary is not installed at `%h/.local/bin/covermint`, update the path in the service file.
+
 ## Ticket tracking with Beads
 
 This project now uses **Beads** for local ticket tracking.
@@ -125,6 +145,7 @@ Seeded tickets:
 - `sp-czm.7` — rename the project to Covermint
 - `sp-czm.8` — add flip transition mode ✅
 - `sp-czm.11` — cache artwork locally ✅
+- `sp-czm.12` — add example user service ✅
 
 To add more work:
 

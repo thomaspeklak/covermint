@@ -1,0 +1,14 @@
+[Unit]
+Description=Covermint desktop artwork overlay
+Documentation=https://github.com/your-user/covermint
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/covermint --monitor auto --layer background --transition fade --transition-ms 220
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
