@@ -313,7 +313,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("covermint-artwork");
-    frame.set_child(Some(&overlay));
+    frame.append(&overlay);
 
     window.set_child(Some(&frame));
     window.present();
