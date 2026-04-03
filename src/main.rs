@@ -352,8 +352,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     secondary_picture.set_opacity(0.0);
 
     let overlay = gtk::Overlay::new();
-    overlay.set_width_request(config.width);
-    overlay.set_height_request(config.height);
+    overlay.set_size_request(config.width, config.height);
     overlay.set_halign(gtk::Align::Center);
     overlay.set_valign(gtk::Align::Center);
     overlay.set_child(Some(&primary_picture));
@@ -361,8 +360,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("covermint-artwork");
-    frame.set_width_request(window_width);
-    frame.set_height_request(window_height);
+    frame.set_size_request(window_width, window_height);
     frame.set_halign(gtk::Align::Fill);
     frame.set_valign(gtk::Align::Fill);
     frame.set_opacity(config.opacity);
@@ -454,12 +452,13 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
 fn new_artwork_picture(config: &Config) -> gtk::Picture {
     let picture = gtk::Picture::new();
-    picture.set_width_request(config.width);
-    picture.set_height_request(config.height);
-    picture.set_can_shrink(false);
+    picture.set_size_request(config.width, config.height);
+    picture.set_can_shrink(true);
     picture.set_content_fit(gtk::ContentFit::Contain);
-    picture.set_halign(gtk::Align::Center);
-    picture.set_valign(gtk::Align::Center);
+    picture.set_hexpand(true);
+    picture.set_vexpand(true);
+    picture.set_halign(gtk::Align::Fill);
+    picture.set_valign(gtk::Align::Fill);
     picture
 }
 
@@ -496,8 +495,7 @@ struct TransitionFrame {
 }
 
 fn reset_picture_size(picture: &gtk::Picture, width: i32, height: i32) {
-    picture.set_width_request(width);
-    picture.set_height_request(height);
+    picture.set_size_request(width, height);
 }
 
 fn artwork_window_size(config: &Config) -> (i32, i32) {

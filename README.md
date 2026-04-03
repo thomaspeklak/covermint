@@ -108,7 +108,7 @@ cargo run --release -- --monitor auto --no-cache
 - the app polls instead of reacting to MPRIS signals
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
-- artwork is scaled to the configured frame size; tune it with `--size`, `--width`, and `--height`
+- artwork is scaled to the configured frame size in both directions; tune it with `--size`, `--width`, and `--height`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - paused artwork stays hidden unless `--show-paused` is enabled
 - the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system when enabled
@@ -170,6 +170,7 @@ Seeded tickets:
 - `sp-czm.21` — add overall artwork opacity control ✅
 - `sp-czm.22` — allow monitor selection by index ✅
 - `sp-czm.23` — keep artwork window size stable across images ✅
+- `sp-czm.24` — constrain artwork to fixed frame bounds ✅
 
 To add more work:
 
