@@ -17,7 +17,7 @@ This repo is still an early spike, but it already works for the basic flow:
 
 ## Current features
 
-- monitor selection via `--monitor auto|internal|external|<name>`
+- monitor selection via `--monitor auto|internal|external|<index>|<name>`
 - monitor discovery via `--list-monitors`
 - player discovery via `--list-players`
 - layer selection via `--layer background|bottom`
@@ -63,6 +63,7 @@ Useful examples:
 
 ```bash
 cargo run --release -- --monitor auto --layer background
+cargo run --release -- --monitor 0 --placement top-left --margin 32
 cargo run --release -- --monitor internal --placement top-left --margin 32
 cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
@@ -78,8 +79,8 @@ cargo run --release -- --monitor auto --no-cache
 ## CLI reference
 
 ```text
---monitor auto|internal|external|<name>
-                           Pick a monitor by alias, connector, or matching description
+--monitor auto|internal|external|<index>|<name>
+                           Pick a monitor by alias, list index, connector, or matching description
 --player auto|<name>        MPRIS player name passed to playerctl; auto uses the active/default player
 --size <px>                 Shorthand for setting both --width and --height
 --width <px>                Artwork width in pixels
@@ -166,6 +167,7 @@ Seeded tickets:
 - `sp-czm.19` — add player discovery command ✅
 - `sp-czm.20` — allow disabling remote artwork cache ✅
 - `sp-czm.21` — add overall artwork opacity control ✅
+- `sp-czm.22` — allow monitor selection by index ✅
 
 To add more work:
 

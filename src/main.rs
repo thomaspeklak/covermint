@@ -92,7 +92,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players]"
+                "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -886,6 +886,16 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
             .find(|monitor| !monitor_is_internal(monitor))
             .cloned()
             .or_else(|| all.first().cloned());
+    }
+
+    let selector = selector.trim();
+    if let Some(index) = selector
+        .strip_prefix('#')
+        .unwrap_or(selector)
+        .parse::<usize>()
+        .ok()
+    {
+        return all.get(index).cloned();
     }
 
     let needle = selector.to_ascii_lowercase();
