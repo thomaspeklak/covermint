@@ -25,6 +25,7 @@ struct Config {
     transition: Transition,
     transition_ms: u32,
     poll_seconds: u32,
+    show_paused: bool,
     layer: ShellLayer,
     list_monitors: bool,
 }
@@ -77,6 +78,7 @@ struct MediaState {
 #[derive(Debug, PartialEq, Eq)]
 enum PlaybackStatus {
     Playing,
+    Paused,
     NotPlaying,
 }
 
@@ -86,7 +88,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -131,6 +133,7 @@ impl Config {
             transition: Transition::Fade,
             transition_ms: 180,
             poll_seconds: 2,
+            show_paused: false,
             layer: ShellLayer::Background,
             list_monitors: false,
         };
@@ -179,6 +182,7 @@ impl Config {
                     config.poll_seconds =
                         parse_u32(next_arg(&mut args, "--poll-seconds")?, "--poll-seconds")?
                 }
+                "--show-paused" => config.show_paused = true,
                 "--layer" => {
                     config.layer = match next_arg(&mut args, "--layer")?.as_str() {
                         "background" => ShellLayer::Background,
@@ -336,9 +340,11 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
         match query_player(&config_ref.player) {
             Some(MediaState {
-                status: PlaybackStatus::Playing,
+                status,
                 art_url: Some(art_url),
-            }) => {
+            }) if status == PlaybackStatus::Playing
+                || (config_ref.show_paused && status == PlaybackStatus::Paused) =>
+            {
                 let needs_reload = current_url
                     .borrow()
                     .as_ref()
@@ -880,10 +886,10 @@ fn monitor_label(monitor: &gdk::Monitor) -> String {
 
 fn query_player(player: &str) -> Option<MediaState> {
     let status = run_playerctl(player, &["status"])?;
-    let status = if status.trim() == "Playing" {
-        PlaybackStatus::Playing
-    } else {
-        PlaybackStatus::NotPlaying
+    let status = match status.trim() {
+        "Playing" => PlaybackStatus::Playing,
+        "Paused" => PlaybackStatus::Paused,
+        _ => PlaybackStatus::NotPlaying,
     };
 
     let art_url = run_playerctl(player, &["metadata", "mpris:artUrl"])

@@ -30,6 +30,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - support for `file://` artwork URLs exposed by MPRIS players
 - player selection via `--player` (defaults to `auto`)
 - configurable polling interval via `--poll-seconds`
+- optional paused-state visibility via `--show-paused`
 
 ## Requirements
 
@@ -68,6 +69,7 @@ cargo run --release -- --monitor auto --transition fade --transition-ms 220
 cargo run --release -- --monitor auto --transition flip --transition-ms 220
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
+cargo run --release -- --monitor auto --show-paused
 ```
 
 ## CLI reference
@@ -88,6 +90,7 @@ cargo run --release -- --monitor auto --player auto
 --transition none|fade|flip Artwork transition style
 --transition-ms <n>         Transition duration in milliseconds
 --poll-seconds <n>          Refresh interval
+--show-paused               Keep the last artwork visible while playback is paused
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
 ```
@@ -98,6 +101,7 @@ cargo run --release -- --monitor auto --player auto
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
+- paused artwork stays hidden unless `--show-paused` is enabled
 - the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system
 - only `http`, `https`, and `file` artwork URLs are supported right now
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
@@ -150,6 +154,7 @@ Seeded tickets:
 - `sp-czm.13` — trim artwork cache ✅
 - `sp-czm.15` — support file:// artwork URLs ✅
 - `sp-czm.16` — add internal/external monitor aliases ✅
+- `sp-czm.17` — optionally keep artwork visible while paused ✅
 
 To add more work:
 
