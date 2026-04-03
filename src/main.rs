@@ -439,30 +439,108 @@ fn stop_transition(transition_source: &Rc<RefCell<Option<glib::SourceId>>>) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct TransitionFrame {
+    width_progress: f64,
+    opacity: f64,
+}
+
 fn reset_picture_size(picture: &gtk::Picture, width: i32, height: i32) {
     picture.set_width_request(width);
     picture.set_height_request(height);
 }
 
-fn flip_width(width: i32, progress: f64) -> i32 {
-    ((width as f64 * progress.clamp(0.0, 1.0)).round() as i32).max(1)
+fn ease_in_out_cubic(progress: f64) -> f64 {
+    let t = progress.clamp(0.0, 1.0);
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        1.0 - ((-2.0 * t + 2.0).powi(3) / 2.0)
+    }
 }
 
-fn apply_transition_frame(
+fn ease_out_back_subtle(progress: f64) -> f64 {
+    let t = progress.clamp(0.0, 1.0);
+    let overshoot = 0.6;
+    let c3 = overshoot + 1.0;
+    1.0 + c3 * (t - 1.0).powi(3) + overshoot * (t - 1.0).powi(2)
+}
+
+fn flip_width(width: i32, progress: f64) -> i32 {
+    ((width as f64 * progress.clamp(0.0, 1.08)).round() as i32).max(1)
+}
+
+fn render_picture_frame(
     picture: &gtk::Picture,
     width: i32,
     height: i32,
     transition: Transition,
-    progress: f64,
-    opacity: f64,
+    frame: TransitionFrame,
 ) {
-    let width = match transition {
-        Transition::Flip => flip_width(width, progress),
+    let frame_width = match transition {
+        Transition::Flip => flip_width(width, frame.width_progress),
         Transition::None | Transition::Fade => width,
     };
-    picture.set_width_request(width);
+    picture.set_width_request(frame_width);
     picture.set_height_request(height);
-    picture.set_opacity(opacity.clamp(0.0, 1.0));
+    picture.set_opacity(frame.opacity.clamp(0.0, 1.0));
+}
+
+fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame, TransitionFrame) {
+    let t = progress.clamp(0.0, 1.0);
+
+    match transition {
+        Transition::None => (
+            TransitionFrame {
+                width_progress: 1.0,
+                opacity: 0.0,
+            },
+            TransitionFrame {
+                width_progress: 1.0,
+                opacity: 1.0,
+            },
+        ),
+        Transition::Fade => {
+            let eased = ease_in_out_cubic(t);
+            (
+                TransitionFrame {
+                    width_progress: 1.0,
+                    opacity: 1.0 - eased,
+                },
+                TransitionFrame {
+                    width_progress: 1.0,
+                    opacity: eased,
+                },
+            )
+        }
+        Transition::Flip => {
+            if t < 0.5 {
+                let phase = ease_in_out_cubic(t / 0.5);
+                (
+                    TransitionFrame {
+                        width_progress: 1.0 - phase,
+                        opacity: 1.0 - (phase * 0.85),
+                    },
+                    TransitionFrame {
+                        width_progress: 0.0,
+                        opacity: 0.0,
+                    },
+                )
+            } else {
+                let phase = (t - 0.5) / 0.5;
+                (
+                    TransitionFrame {
+                        width_progress: 0.0,
+                        opacity: 0.0,
+                    },
+                    TransitionFrame {
+                        width_progress: ease_out_back_subtle(phase),
+                        opacity: ease_in_out_cubic(phase),
+                    },
+                )
+            }
+        }
+    }
 }
 
 fn clear_picture(picture: &gtk::Picture, width: i32, height: i32) {
@@ -500,21 +578,20 @@ fn set_artwork_texture(
     let (from_picture, to_picture) = active_picture_pair(primary, secondary, current_slot);
 
     to_picture.set_paintable(Some(texture));
-    apply_transition_frame(
-        &to_picture,
-        config.width,
-        config.height,
-        config.transition,
-        0.0,
-        0.0,
-    );
-    apply_transition_frame(
+    let (from_start, to_start) = transition_frames(config.transition, 0.0);
+    render_picture_frame(
         &from_picture,
         config.width,
         config.height,
         config.transition,
-        1.0,
-        1.0,
+        from_start,
+    );
+    render_picture_frame(
+        &to_picture,
+        config.width,
+        config.height,
+        config.transition,
+        to_start,
     );
 
     let active_slot = active_slot.clone();
@@ -527,19 +604,22 @@ fn set_artwork_texture(
 
     let source_id = glib::timeout_add_local(Duration::from_millis(16), move || {
         let progress = (start.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
-        apply_transition_frame(&to_picture, width, height, transition, progress, progress);
-        apply_transition_frame(
-            &from_picture,
-            width,
-            height,
-            transition,
-            1.0 - progress,
-            1.0 - progress,
-        );
+        let (from_frame, to_frame) = transition_frames(transition, progress);
+        render_picture_frame(&from_picture, width, height, transition, from_frame);
+        render_picture_frame(&to_picture, width, height, transition, to_frame);
 
         if progress >= 1.0 {
             clear_picture(&from_picture, width, height);
-            apply_transition_frame(&to_picture, width, height, transition, 1.0, 1.0);
+            render_picture_frame(
+                &to_picture,
+                width,
+                height,
+                transition,
+                TransitionFrame {
+                    width_progress: 1.0,
+                    opacity: 1.0,
+                },
+            );
             *active_slot.borrow_mut() = next_slot;
             *transition_source.borrow_mut() = None;
             return glib::ControlFlow::Break;
