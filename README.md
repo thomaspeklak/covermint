@@ -20,7 +20,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - monitor selection via `--monitor auto|<name>`
 - monitor discovery via `--list-monitors`
 - layer selection via `--layer background|bottom`
-- square artwork sizing via `--size`
+- sizing via `--size`, `--width`, and `--height`
 - placement presets via `--placement`
 - per-axis offsets via `--offset-x` / `--offset-y`
 - `--margin` shorthand for matching X/Y offsets
@@ -58,7 +58,7 @@ Useful examples:
 cargo run --release -- --monitor auto --layer background
 cargo run --release -- --monitor eDP-1 --placement top-left --margin 32
 cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
-cargo run --release -- --monitor HDMI-A-1 --size 520 --placement bottom-right --offset-x 64 --offset-y 64
+cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 ```
 
@@ -67,7 +67,9 @@ cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 ```text
 --monitor auto|<name>       Pick a monitor by connector or matching description
 --player <name>             MPRIS player name passed to playerctl
---size <px>                 Square artwork size in pixels
+--size <px>                 Shorthand for setting both --width and --height
+--width <px>                Artwork width in pixels
+--height <px>               Artwork height in pixels
 --placement <preset>        One of: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right
 --offset-x <px>             Horizontal offset; positive moves inward from the chosen side or away from center
 --offset-y <px>             Vertical offset; positive moves inward from the chosen side or away from center

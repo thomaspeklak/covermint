@@ -6,7 +6,8 @@ use std::{cell::RefCell, env, process::Command, rc::Rc};
 struct Config {
     monitor_selector: String,
     player: String,
-    size: i32,
+    width: i32,
+    height: i32,
     placement: Placement,
     offset_x: i32,
     offset_y: i32,
@@ -59,7 +60,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -94,7 +95,8 @@ impl Config {
         let mut config = Self {
             monitor_selector: "auto".to_string(),
             player: "spotify".to_string(),
-            size: 420,
+            width: 420,
+            height: 420,
             placement: Placement::BottomRight,
             offset_x: 48,
             offset_y: 48,
@@ -108,7 +110,15 @@ impl Config {
             match arg.as_str() {
                 "--monitor" => config.monitor_selector = next_arg(&mut args, "--monitor")?,
                 "--player" => config.player = next_arg(&mut args, "--player")?,
-                "--size" => config.size = parse_i32(next_arg(&mut args, "--size")?, "--size")?,
+                "--size" => {
+                    let size = parse_i32(next_arg(&mut args, "--size")?, "--size")?;
+                    config.width = size;
+                    config.height = size;
+                }
+                "--width" => config.width = parse_i32(next_arg(&mut args, "--width")?, "--width")?,
+                "--height" => {
+                    config.height = parse_i32(next_arg(&mut args, "--height")?, "--height")?
+                }
                 "--placement" => {
                     config.placement = Placement::parse(&next_arg(&mut args, "--placement")?)?
                 }
@@ -225,7 +235,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     window.set_focusable(false);
     window.set_can_focus(false);
     window.set_can_target(false);
-    window.set_default_size(config.size, config.size);
+    window.set_default_size(config.width, config.height);
 
     window.init_layer_shell();
     window.set_namespace(Some("covermint"));
@@ -250,8 +260,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     apply_placement(&window, &config, selected_monitor.as_ref());
 
     let picture = gtk::Picture::new();
-    picture.set_width_request(config.size);
-    picture.set_height_request(config.size);
+    picture.set_width_request(config.width);
+    picture.set_height_request(config.height);
     picture.set_can_shrink(false);
     picture.set_content_fit(gtk::ContentFit::Contain);
 
@@ -323,13 +333,13 @@ fn apply_placement(
         let x = axis_offset(
             config.placement.horizontal(),
             geometry.width(),
-            config.size,
+            config.width,
             config.offset_x,
         );
         let y = axis_offset(
             config.placement.vertical(),
             geometry.height(),
-            config.size,
+            config.height,
             config.offset_y,
         );
 
