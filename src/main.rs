@@ -1,6 +1,12 @@
 use gtk::{gdk, glib, prelude::*};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
-use std::{cell::RefCell, env, process::Command, rc::Rc};
+use std::{
+    cell::RefCell,
+    env,
+    process::Command,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone, Debug)]
 struct Config {
@@ -13,6 +19,8 @@ struct Config {
     offset_y: i32,
     border_width: i32,
     border_color: String,
+    transition: Transition,
+    transition_ms: u32,
     poll_seconds: u32,
     layer: ShellLayer,
     list_monitors: bool,
@@ -44,6 +52,18 @@ enum AxisPlacement {
     End,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Transition {
+    None,
+    Fade,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArtworkSlot {
+    Primary,
+    Secondary,
+}
+
 #[derive(Debug)]
 struct MediaState {
     status: PlaybackStatus,
@@ -62,7 +82,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|none] [--transition-ms 180] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -104,6 +124,8 @@ impl Config {
             offset_y: 48,
             border_width: 0,
             border_color: "rgba(255,255,255,0.35)".to_string(),
+            transition: Transition::Fade,
+            transition_ms: 180,
             poll_seconds: 2,
             layer: ShellLayer::Background,
             list_monitors: false,
@@ -142,6 +164,13 @@ impl Config {
                         parse_i32(next_arg(&mut args, "--border-width")?, "--border-width")?
                 }
                 "--border-color" => config.border_color = next_arg(&mut args, "--border-color")?,
+                "--transition" => {
+                    config.transition = Transition::parse(&next_arg(&mut args, "--transition")?)?
+                }
+                "--transition-ms" => {
+                    config.transition_ms =
+                        parse_u32(next_arg(&mut args, "--transition-ms")?, "--transition-ms")?
+                }
                 "--poll-seconds" => {
                     config.poll_seconds =
                         parse_u32(next_arg(&mut args, "--poll-seconds")?, "--poll-seconds")?
@@ -164,6 +193,18 @@ impl Config {
         }
 
         Ok(config)
+    }
+}
+
+impl Transition {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.to_ascii_lowercase().as_str() {
+            "none" => Ok(Self::None),
+            "fade" => Ok(Self::Fade),
+            other => Err(format!(
+                "unsupported --transition value '{other}', expected one of: none, fade"
+            )),
+        }
     }
 }
 
@@ -270,22 +311,27 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     apply_placement(&window, &config, selected_monitor.as_ref());
     install_styles(&config);
 
-    let picture = gtk::Picture::new();
-    picture.set_width_request(config.width);
-    picture.set_height_request(config.height);
-    picture.set_can_shrink(false);
-    picture.set_content_fit(gtk::ContentFit::Contain);
+    let primary_picture = new_artwork_picture(&config);
+    let secondary_picture = new_artwork_picture(&config);
+    secondary_picture.set_opacity(0.0);
+
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&primary_picture));
+    overlay.add_overlay(&secondary_picture);
 
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("covermint-artwork");
-    frame.set_child(Some(&picture));
+    frame.set_child(Some(&overlay));
 
     window.set_child(Some(&frame));
     window.present();
     window.set_visible(false);
 
     let current_url = Rc::new(RefCell::new(None::<String>));
-    let picture_ref = picture.clone();
+    let active_slot = Rc::new(RefCell::new(ArtworkSlot::Primary));
+    let transition_source = Rc::new(RefCell::new(None::<glib::SourceId>));
+    let primary_picture_ref = primary_picture.clone();
+    let secondary_picture_ref = secondary_picture.clone();
     let window_ref = window.clone();
     let config_ref = config.clone();
 
@@ -303,12 +349,26 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
             if needs_reload {
                 match download_texture(&art_url) {
                     Some(texture) => {
-                        picture_ref.set_paintable(Some(&texture));
+                        let has_existing_art = current_url.borrow().is_some();
+                        set_artwork_texture(
+                            &primary_picture_ref,
+                            &secondary_picture_ref,
+                            &active_slot,
+                            &transition_source,
+                            &config_ref,
+                            &texture,
+                            has_existing_art,
+                        );
                         *current_url.borrow_mut() = Some(art_url);
                     }
                     None => {
                         eprintln!("covermint: failed to download artwork");
-                        picture_ref.set_paintable(Option::<&gdk::Texture>::None);
+                        clear_artwork(
+                            &primary_picture_ref,
+                            &secondary_picture_ref,
+                            &active_slot,
+                            &transition_source,
+                        );
                         *current_url.borrow_mut() = None;
                         window_ref.set_visible(false);
                         return;
@@ -319,7 +379,12 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
             window_ref.set_visible(true);
         }
         _ => {
-            picture_ref.set_paintable(Option::<&gdk::Texture>::None);
+            clear_artwork(
+                &primary_picture_ref,
+                &secondary_picture_ref,
+                &active_slot,
+                &transition_source,
+            );
             *current_url.borrow_mut() = None;
             window_ref.set_visible(false);
         }
@@ -331,6 +396,97 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         refresh();
         glib::ControlFlow::Continue
     });
+}
+
+fn new_artwork_picture(config: &Config) -> gtk::Picture {
+    let picture = gtk::Picture::new();
+    picture.set_width_request(config.width);
+    picture.set_height_request(config.height);
+    picture.set_can_shrink(false);
+    picture.set_content_fit(gtk::ContentFit::Contain);
+    picture
+}
+
+fn set_artwork_texture(
+    primary: &gtk::Picture,
+    secondary: &gtk::Picture,
+    active_slot: &Rc<RefCell<ArtworkSlot>>,
+    transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
+    config: &Config,
+    texture: &gdk::Texture,
+    animate: bool,
+) {
+    if let Some(source_id) = transition_source.borrow_mut().take() {
+        source_id.remove();
+    }
+
+    if !animate || config.transition == Transition::None || config.transition_ms == 0 {
+        let slot = *active_slot.borrow();
+        let (active_picture, inactive_picture) = match slot {
+            ArtworkSlot::Primary => (primary, secondary),
+            ArtworkSlot::Secondary => (secondary, primary),
+        };
+        active_picture.set_paintable(Some(texture));
+        active_picture.set_opacity(1.0);
+        inactive_picture.set_opacity(0.0);
+        inactive_picture.set_paintable(Option::<&gdk::Texture>::None);
+        return;
+    }
+
+    let current_slot = *active_slot.borrow();
+    let next_slot = match current_slot {
+        ArtworkSlot::Primary => ArtworkSlot::Secondary,
+        ArtworkSlot::Secondary => ArtworkSlot::Primary,
+    };
+    let (from_picture, to_picture) = match current_slot {
+        ArtworkSlot::Primary => (primary.clone(), secondary.clone()),
+        ArtworkSlot::Secondary => (secondary.clone(), primary.clone()),
+    };
+
+    to_picture.set_paintable(Some(texture));
+    to_picture.set_opacity(0.0);
+    from_picture.set_opacity(1.0);
+
+    let active_slot = active_slot.clone();
+    let transition_source = transition_source.clone();
+    let start = Instant::now();
+    let duration = Duration::from_millis(config.transition_ms as u64);
+
+    let source_id = glib::timeout_add_local(Duration::from_millis(16), move || {
+        let progress = (start.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
+        to_picture.set_opacity(progress);
+        from_picture.set_opacity(1.0 - progress);
+
+        if progress >= 1.0 {
+            from_picture.set_opacity(0.0);
+            from_picture.set_paintable(Option::<&gdk::Texture>::None);
+            to_picture.set_opacity(1.0);
+            *active_slot.borrow_mut() = next_slot;
+            *transition_source.borrow_mut() = None;
+            return glib::ControlFlow::Break;
+        }
+
+        glib::ControlFlow::Continue
+    });
+
+    *transition_source.borrow_mut() = Some(source_id);
+}
+
+fn clear_artwork(
+    primary: &gtk::Picture,
+    secondary: &gtk::Picture,
+    active_slot: &Rc<RefCell<ArtworkSlot>>,
+    transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
+) {
+    if let Some(source_id) = transition_source.borrow_mut().take() {
+        source_id.remove();
+    }
+
+    primary.set_paintable(Option::<&gdk::Texture>::None);
+    secondary.set_paintable(Option::<&gdk::Texture>::None);
+    primary.set_opacity(1.0);
+    secondary.set_opacity(0.0);
+    *active_slot.borrow_mut() = ArtworkSlot::Primary;
 }
 
 fn apply_placement(

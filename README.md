@@ -25,6 +25,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - per-axis offsets via `--offset-x` / `--offset-y`
 - `--margin` shorthand for matching X/Y offsets
 - translucent border styling via `--border-width` and `--border-color`
+- artwork transitions via `--transition` and `--transition-ms`
 - player selection via `--player` (defaults to `auto`)
 - configurable polling interval via `--poll-seconds`
 
@@ -61,6 +62,7 @@ cargo run --release -- --monitor eDP-1 --placement top-left --margin 32
 cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)'
+cargo run --release -- --monitor auto --transition fade --transition-ms 220
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
 ```
@@ -79,6 +81,8 @@ cargo run --release -- --monitor auto --player auto
 --margin <px>               Shorthand for setting both --offset-x and --offset-y
 --border-width <px>         Border width in pixels
 --border-color <css-color>  Border color, including alpha-capable values like rgba(...)
+--transition none|fade      Artwork transition style
+--transition-ms <n>         Transition duration in milliseconds
 --poll-seconds <n>          Refresh interval
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
@@ -91,7 +95,8 @@ cargo run --release -- --monitor auto --player auto
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - there is no artwork cache yet
-- transitions and more advanced styling controls are still pending
+- only `fade` is implemented so far; more transitions can be added on top of the new transition hook
+- more advanced styling controls are still pending
 
 ## Ticket tracking with Beads
 
@@ -108,13 +113,14 @@ br show sp-czm.2
 
 Seeded tickets:
 
-- `sp-czm.1` — remove system-specific assumptions and odd dependencies
-- `sp-czm.2` — add custom placement controls
-- `sp-czm.3` — add an extensible transition system
-- `sp-czm.4` — support borders with transparency
-- `sp-czm.5` — improve custom sizing controls
+- `sp-czm.1` — remove system-specific assumptions and odd dependencies ✅
+- `sp-czm.2` — add custom placement controls ✅
+- `sp-czm.3` — add an extensible transition system ✅
+- `sp-czm.4` — support borders with transparency ✅
+- `sp-czm.5` — improve custom sizing controls ✅
 - `sp-czm.6` — write a polished README ✅
 - `sp-czm.7` — rename the project to Covermint
+- `sp-czm.8` — add flip transition mode
 
 To add more work:
 
