@@ -11,6 +11,8 @@ struct Config {
     placement: Placement,
     offset_x: i32,
     offset_y: i32,
+    border_width: i32,
+    border_color: String,
     poll_seconds: u32,
     layer: ShellLayer,
     list_monitors: bool,
@@ -60,7 +62,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -100,6 +102,8 @@ impl Config {
             placement: Placement::BottomRight,
             offset_x: 48,
             offset_y: 48,
+            border_width: 0,
+            border_color: "rgba(255,255,255,0.35)".to_string(),
             poll_seconds: 2,
             layer: ShellLayer::Background,
             list_monitors: false,
@@ -133,6 +137,11 @@ impl Config {
                     config.offset_x = margin;
                     config.offset_y = margin;
                 }
+                "--border-width" => {
+                    config.border_width =
+                        parse_i32(next_arg(&mut args, "--border-width")?, "--border-width")?
+                }
+                "--border-color" => config.border_color = next_arg(&mut args, "--border-color")?,
                 "--poll-seconds" => {
                     config.poll_seconds =
                         parse_u32(next_arg(&mut args, "--poll-seconds")?, "--poll-seconds")?
@@ -236,6 +245,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     window.set_can_focus(false);
     window.set_can_target(false);
     window.set_default_size(config.width, config.height);
+    window.add_css_class("covermint-window");
 
     window.init_layer_shell();
     window.set_namespace(Some("covermint"));
@@ -258,6 +268,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     }
 
     apply_placement(&window, &config, selected_monitor.as_ref());
+    install_styles(&config);
 
     let picture = gtk::Picture::new();
     picture.set_width_request(config.width);
@@ -265,7 +276,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     picture.set_can_shrink(false);
     picture.set_content_fit(gtk::ContentFit::Contain);
 
-    let frame = gtk::Frame::new(None);
+    let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    frame.add_css_class("covermint-artwork");
     frame.set_child(Some(&picture));
 
     window.set_child(Some(&frame));
@@ -404,6 +416,24 @@ fn apply_anchor_fallback(window: &gtk::ApplicationWindow, config: &Config) {
             window.set_margin(Edge::Left, config.offset_x);
             window.set_margin(Edge::Top, config.offset_y);
         }
+    }
+}
+
+fn install_styles(config: &Config) {
+    let provider = gtk::CssProvider::new();
+    let border_width = config.border_width.max(0);
+    let css = format!(
+        ".covermint-window {{ background-color: transparent; box-shadow: none; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; }}",
+        config.border_color
+    );
+    provider.load_from_data(&css);
+
+    if let Some(display) = gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
     }
 }
 
