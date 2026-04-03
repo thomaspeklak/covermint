@@ -7,7 +7,9 @@ struct Config {
     monitor_selector: String,
     player: String,
     size: i32,
-    margin: i32,
+    placement: Placement,
+    offset_x: i32,
+    offset_y: i32,
     poll_seconds: u32,
     layer: ShellLayer,
     list_monitors: bool,
@@ -17,6 +19,26 @@ struct Config {
 enum ShellLayer {
     Background,
     Bottom,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Placement {
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Center,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum AxisPlacement {
+    Start,
+    Center,
+    End,
 }
 
 #[derive(Debug)]
@@ -36,7 +58,9 @@ fn main() -> glib::ExitCode {
         Ok(config) => config,
         Err(message) => {
             eprintln!("{message}");
-            eprintln!("usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--margin 48] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]");
+            eprintln!(
+                "usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+            );
             return glib::ExitCode::FAILURE;
         }
     };
@@ -71,7 +95,9 @@ impl Config {
             monitor_selector: "auto".to_string(),
             player: "spotify".to_string(),
             size: 420,
-            margin: 48,
+            placement: Placement::BottomRight,
+            offset_x: 48,
+            offset_y: 48,
             poll_seconds: 2,
             layer: ShellLayer::Background,
             list_monitors: false,
@@ -83,14 +109,23 @@ impl Config {
                 "--monitor" => config.monitor_selector = next_arg(&mut args, "--monitor")?,
                 "--player" => config.player = next_arg(&mut args, "--player")?,
                 "--size" => config.size = parse_i32(next_arg(&mut args, "--size")?, "--size")?,
+                "--placement" => {
+                    config.placement = Placement::parse(&next_arg(&mut args, "--placement")?)?
+                }
+                "--offset-x" => {
+                    config.offset_x = parse_i32(next_arg(&mut args, "--offset-x")?, "--offset-x")?
+                }
+                "--offset-y" => {
+                    config.offset_y = parse_i32(next_arg(&mut args, "--offset-y")?, "--offset-y")?
+                }
                 "--margin" => {
-                    config.margin = parse_i32(next_arg(&mut args, "--margin")?, "--margin")?
+                    let margin = parse_i32(next_arg(&mut args, "--margin")?, "--margin")?;
+                    config.offset_x = margin;
+                    config.offset_y = margin;
                 }
                 "--poll-seconds" => {
-                    config.poll_seconds = parse_u32(
-                        next_arg(&mut args, "--poll-seconds")?,
-                        "--poll-seconds",
-                    )?
+                    config.poll_seconds =
+                        parse_u32(next_arg(&mut args, "--poll-seconds")?, "--poll-seconds")?
                 }
                 "--layer" => {
                     config.layer = match next_arg(&mut args, "--layer")?.as_str() {
@@ -99,7 +134,7 @@ impl Config {
                         value => {
                             return Err(format!(
                                 "unsupported --layer value '{value}', expected background or bottom"
-                            ))
+                            ));
                         }
                     }
                 }
@@ -110,6 +145,55 @@ impl Config {
         }
 
         Ok(config)
+    }
+}
+
+impl Placement {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.to_ascii_lowercase().as_str() {
+            "top-left" | "tl" => Ok(Self::TopLeft),
+            "top" | "top-center" | "tc" => Ok(Self::Top),
+            "top-right" | "tr" => Ok(Self::TopRight),
+            "left" | "center-left" | "cl" => Ok(Self::Left),
+            "center" | "middle" => Ok(Self::Center),
+            "right" | "center-right" | "cr" => Ok(Self::Right),
+            "bottom-left" | "bl" => Ok(Self::BottomLeft),
+            "bottom" | "bottom-center" | "bc" => Ok(Self::Bottom),
+            "bottom-right" | "br" => Ok(Self::BottomRight),
+            other => Err(format!(
+                "unsupported --placement value '{other}', expected one of: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right"
+            )),
+        }
+    }
+
+    fn horizontal(self) -> AxisPlacement {
+        match self {
+            Self::TopLeft | Self::Left | Self::BottomLeft => AxisPlacement::Start,
+            Self::Top | Self::Center | Self::Bottom => AxisPlacement::Center,
+            Self::TopRight | Self::Right | Self::BottomRight => AxisPlacement::End,
+        }
+    }
+
+    fn vertical(self) -> AxisPlacement {
+        match self {
+            Self::TopLeft | Self::Top | Self::TopRight => AxisPlacement::Start,
+            Self::Left | Self::Center | Self::Right => AxisPlacement::Center,
+            Self::BottomLeft | Self::Bottom | Self::BottomRight => AxisPlacement::End,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::TopLeft => "top-left",
+            Self::Top => "top",
+            Self::TopRight => "top-right",
+            Self::Left => "left",
+            Self::Center => "center",
+            Self::Right => "right",
+            Self::BottomLeft => "bottom-left",
+            Self::Bottom => "bottom",
+            Self::BottomRight => "bottom-right",
+        }
     }
 }
 
@@ -151,20 +235,19 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         ShellLayer::Bottom => Layer::Bottom,
     });
     window.set_exclusive_zone(0);
-    window.set_anchor(Edge::Right, true);
-    window.set_anchor(Edge::Bottom, true);
-    window.set_margin(Edge::Right, config.margin);
-    window.set_margin(Edge::Bottom, config.margin);
 
-    if let Some(monitor) = select_monitor(&config.monitor_selector) {
-        window.set_monitor(Some(&monitor));
-        eprintln!("covermint: using monitor {}", monitor_label(&monitor));
+    let selected_monitor = select_monitor(&config.monitor_selector);
+    if let Some(monitor) = selected_monitor.as_ref() {
+        window.set_monitor(Some(monitor));
+        eprintln!("covermint: using monitor {}", monitor_label(monitor));
     } else {
         eprintln!(
             "covermint: monitor selector '{}' not found, compositor will choose",
             config.monitor_selector
         );
     }
+
+    apply_placement(&window, &config, selected_monitor.as_ref());
 
     let picture = gtk::Picture::new();
     picture.set_width_request(config.size);
@@ -184,41 +267,39 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let window_ref = window.clone();
     let config_ref = config.clone();
 
-    let refresh = move || {
-        match query_player(&config_ref.player) {
-            Some(MediaState {
-                status: PlaybackStatus::Playing,
-                art_url: Some(art_url),
-            }) => {
-                let needs_reload = current_url
-                    .borrow()
-                    .as_ref()
-                    .map(|current| current != &art_url)
-                    .unwrap_or(true);
+    let refresh = move || match query_player(&config_ref.player) {
+        Some(MediaState {
+            status: PlaybackStatus::Playing,
+            art_url: Some(art_url),
+        }) => {
+            let needs_reload = current_url
+                .borrow()
+                .as_ref()
+                .map(|current| current != &art_url)
+                .unwrap_or(true);
 
-                if needs_reload {
-                    match download_texture(&art_url) {
-                        Some(texture) => {
-                            picture_ref.set_paintable(Some(&texture));
-                            *current_url.borrow_mut() = Some(art_url);
-                        }
-                        None => {
-                            eprintln!("covermint: failed to download artwork");
-                            picture_ref.set_paintable(Option::<&gdk::Texture>::None);
-                            *current_url.borrow_mut() = None;
-                            window_ref.set_visible(false);
-                            return;
-                        }
+            if needs_reload {
+                match download_texture(&art_url) {
+                    Some(texture) => {
+                        picture_ref.set_paintable(Some(&texture));
+                        *current_url.borrow_mut() = Some(art_url);
+                    }
+                    None => {
+                        eprintln!("covermint: failed to download artwork");
+                        picture_ref.set_paintable(Option::<&gdk::Texture>::None);
+                        *current_url.borrow_mut() = None;
+                        window_ref.set_visible(false);
+                        return;
                     }
                 }
+            }
 
-                window_ref.set_visible(true);
-            }
-            _ => {
-                picture_ref.set_paintable(Option::<&gdk::Texture>::None);
-                *current_url.borrow_mut() = None;
-                window_ref.set_visible(false);
-            }
+            window_ref.set_visible(true);
+        }
+        _ => {
+            picture_ref.set_paintable(Option::<&gdk::Texture>::None);
+            *current_url.borrow_mut() = None;
+            window_ref.set_visible(false);
         }
     };
 
@@ -228,6 +309,92 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         refresh();
         glib::ControlFlow::Continue
     });
+}
+
+fn apply_placement(
+    window: &gtk::ApplicationWindow,
+    config: &Config,
+    monitor: Option<&gdk::Monitor>,
+) {
+    reset_window_position(window);
+
+    if let Some(monitor) = monitor {
+        let geometry = monitor.geometry();
+        let x = axis_offset(
+            config.placement.horizontal(),
+            geometry.width(),
+            config.size,
+            config.offset_x,
+        );
+        let y = axis_offset(
+            config.placement.vertical(),
+            geometry.height(),
+            config.size,
+            config.offset_y,
+        );
+
+        window.set_anchor(Edge::Left, true);
+        window.set_anchor(Edge::Top, true);
+        window.set_margin(Edge::Left, x);
+        window.set_margin(Edge::Top, y);
+        return;
+    }
+
+    apply_anchor_fallback(window, config);
+}
+
+fn reset_window_position(window: &gtk::ApplicationWindow) {
+    for edge in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] {
+        window.set_anchor(edge, false);
+        window.set_margin(edge, 0);
+    }
+}
+
+fn axis_offset(alignment: AxisPlacement, available: i32, size: i32, offset: i32) -> i32 {
+    match alignment {
+        AxisPlacement::Start => offset,
+        AxisPlacement::Center => ((available - size) / 2) + offset,
+        AxisPlacement::End => available - size - offset,
+    }
+}
+
+fn apply_anchor_fallback(window: &gtk::ApplicationWindow, config: &Config) {
+    match config.placement {
+        Placement::TopLeft => {
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Top, true);
+            window.set_margin(Edge::Left, config.offset_x);
+            window.set_margin(Edge::Top, config.offset_y);
+        }
+        Placement::TopRight => {
+            window.set_anchor(Edge::Right, true);
+            window.set_anchor(Edge::Top, true);
+            window.set_margin(Edge::Right, config.offset_x);
+            window.set_margin(Edge::Top, config.offset_y);
+        }
+        Placement::BottomLeft => {
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Bottom, true);
+            window.set_margin(Edge::Left, config.offset_x);
+            window.set_margin(Edge::Bottom, config.offset_y);
+        }
+        Placement::BottomRight => {
+            window.set_anchor(Edge::Right, true);
+            window.set_anchor(Edge::Bottom, true);
+            window.set_margin(Edge::Right, config.offset_x);
+            window.set_margin(Edge::Bottom, config.offset_y);
+        }
+        placement => {
+            eprintln!(
+                "covermint: placement '{}' needs monitor geometry; falling back to top-left because the monitor could not be resolved",
+                placement.label()
+            );
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Top, true);
+            window.set_margin(Edge::Left, config.offset_x);
+            window.set_margin(Edge::Top, config.offset_y);
+        }
+    }
 }
 
 fn list_monitors() {
@@ -310,11 +477,15 @@ fn monitor_label(monitor: &gdk::Monitor) -> String {
     let manufacturer = monitor.manufacturer().map(|value| value.to_string());
     let model = monitor.model().map(|value| value.to_string());
 
-    [connector, description, manufacturer.zip(model).map(|(a, b)| format!("{a} {b}"))]
-        .into_iter()
-        .flatten()
-        .next()
-        .unwrap_or_else(|| "unknown monitor".to_string())
+    [
+        connector,
+        description,
+        manufacturer.zip(model).map(|(a, b)| format!("{a} {b}")),
+    ]
+    .into_iter()
+    .flatten()
+    .next()
+    .unwrap_or_else(|| "unknown monitor".to_string())
 }
 
 fn query_player(player: &str) -> Option<MediaState> {

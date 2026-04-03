@@ -21,7 +21,9 @@ This repo is still an early spike, but it already works for the basic flow:
 - monitor discovery via `--list-monitors`
 - layer selection via `--layer background|bottom`
 - square artwork sizing via `--size`
-- edge offset via `--margin`
+- placement presets via `--placement`
+- per-axis offsets via `--offset-x` / `--offset-y`
+- `--margin` shorthand for matching X/Y offsets
 - player selection via `--player`
 - configurable polling interval via `--poll-seconds`
 
@@ -54,8 +56,9 @@ Useful examples:
 
 ```bash
 cargo run --release -- --monitor auto --layer background
-cargo run --release -- --monitor eDP-1 --layer bottom
-cargo run --release -- --monitor HDMI-A-1 --size 520 --margin 64
+cargo run --release -- --monitor eDP-1 --placement top-left --margin 32
+cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
+cargo run --release -- --monitor HDMI-A-1 --size 520 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 ```
 
@@ -65,7 +68,10 @@ cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 --monitor auto|<name>       Pick a monitor by connector or matching description
 --player <name>             MPRIS player name passed to playerctl
 --size <px>                 Square artwork size in pixels
---margin <px>               Distance from the anchored screen edges
+--placement <preset>        One of: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right
+--offset-x <px>             Horizontal offset; positive moves inward from the chosen side or away from center
+--offset-y <px>             Vertical offset; positive moves inward from the chosen side or away from center
+--margin <px>               Shorthand for setting both --offset-x and --offset-y
 --poll-seconds <n>          Refresh interval
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
@@ -73,8 +79,8 @@ cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 
 ## Current limitations
 
-- placement is currently fixed to the bottom-right corner
 - the app polls instead of reacting to MPRIS signals
+- placement is computed from monitor geometry once at startup and is not yet recomputed on monitor hotplug or resolution changes
 - some players, including Spotify, often expose artwork around `640x640`
 - there is no artwork cache yet
 - there are no transitions, border controls, or advanced styling yet
