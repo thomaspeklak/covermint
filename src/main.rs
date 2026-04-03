@@ -23,6 +23,7 @@ struct Config {
     border_width: i32,
     border_color: String,
     corner_radius: i32,
+    opacity: f64,
     transition: Transition,
     transition_ms: u32,
     poll_seconds: u32,
@@ -91,7 +92,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players]"
+                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -140,6 +141,7 @@ impl Config {
             border_width: 0,
             border_color: "rgba(255,255,255,0.35)".to_string(),
             corner_radius: 0,
+            opacity: 1.0,
             transition: Transition::Fade,
             transition_ms: 180,
             poll_seconds: 2,
@@ -187,6 +189,7 @@ impl Config {
                     config.corner_radius =
                         parse_i32(next_arg(&mut args, "--corner-radius")?, "--corner-radius")?
                 }
+                "--opacity" => config.opacity = parse_opacity(next_arg(&mut args, "--opacity")?)?,
                 "--transition" => {
                     config.transition = Transition::parse(&next_arg(&mut args, "--transition")?)?
                 }
@@ -301,6 +304,20 @@ fn parse_u32(value: String, flag: &str) -> Result<u32, String> {
         .map_err(|_| format!("invalid integer for {flag}: {value}"))
 }
 
+fn parse_opacity(value: String) -> Result<f64, String> {
+    let opacity = value
+        .parse::<f64>()
+        .map_err(|_| format!("invalid number for --opacity: {value}"))?;
+
+    if !(0.0..=1.0).contains(&opacity) {
+        return Err(format!(
+            "unsupported --opacity value '{value}', expected a number between 0.0 and 1.0"
+        ));
+    }
+
+    Ok(opacity)
+}
+
 fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let window = gtk::ApplicationWindow::builder()
         .application(app)
@@ -338,6 +355,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("covermint-artwork");
+    frame.set_opacity(config.opacity);
     frame.append(&overlay);
 
     window.set_child(Some(&frame));
