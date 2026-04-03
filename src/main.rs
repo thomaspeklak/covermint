@@ -29,6 +29,7 @@ struct Config {
     show_paused: bool,
     layer: ShellLayer,
     list_monitors: bool,
+    list_players: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -89,7 +90,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--layer background|bottom] [--list-monitors] [--list-players]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -103,6 +104,12 @@ fn main() -> glib::ExitCode {
     app.connect_activate(move |app| {
         if config.list_monitors {
             list_monitors();
+            app.quit();
+            return;
+        }
+
+        if config.list_players {
+            list_players();
             app.quit();
             return;
         }
@@ -138,6 +145,7 @@ impl Config {
             show_paused: false,
             layer: ShellLayer::Background,
             list_monitors: false,
+            list_players: false,
         };
 
         let mut args = env::args().skip(1);
@@ -201,6 +209,7 @@ impl Config {
                     }
                 }
                 "--list-monitors" => config.list_monitors = true,
+                "--list-players" => config.list_players = true,
                 "--help" | "-h" => return Err("".to_string()),
                 other => return Err(format!("unknown argument: {other}")),
             }
@@ -813,6 +822,13 @@ fn list_monitors() {
             }
         }
         None => eprintln!("covermint: no GTK display available"),
+    }
+}
+
+fn list_players() {
+    match run_command("playerctl", &["-l"]) {
+        Some(players) if !players.is_empty() => println!("{players}"),
+        _ => eprintln!("covermint: no MPRIS players reported by playerctl"),
     }
 }
 

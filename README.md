@@ -19,6 +19,7 @@ This repo is still an early spike, but it already works for the basic flow:
 
 - monitor selection via `--monitor auto|internal|external|<name>`
 - monitor discovery via `--list-monitors`
+- player discovery via `--list-players`
 - layer selection via `--layer background|bottom`
 - sizing via `--size`, `--width`, and `--height`
 - placement presets via `--placement`
@@ -54,6 +55,7 @@ Package names vary by distro, so the README intentionally stays generic instead 
 
 ```bash
 cargo run --release -- --list-monitors
+cargo run --release -- --list-players
 cargo run --release -- --monitor auto
 ```
 
@@ -94,6 +96,7 @@ cargo run --release -- --monitor auto --show-paused
 --show-paused               Keep the last artwork visible while playback is paused
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
+--list-players              Print detected MPRIS player names and exit
 ```
 
 ## Current limitations
@@ -157,6 +160,7 @@ Seeded tickets:
 - `sp-czm.16` — add internal/external monitor aliases ✅
 - `sp-czm.17` — optionally keep artwork visible while paused ✅
 - `sp-czm.18` — add configurable corner radius ✅
+- `sp-czm.19` — add player discovery command ✅
 
 To add more work:
 
