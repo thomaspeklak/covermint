@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
     process::Command,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 #[derive(Clone, Debug)]
@@ -908,6 +908,50 @@ fn cache_path(url: &str) -> Option<PathBuf> {
     Some(dir.join(format!("{:016x}.img", hasher.finish())))
 }
 
+fn trim_cache(dir: &PathBuf) {
+    const MAX_CACHE_FILES: usize = 128;
+    const MAX_CACHE_AGE: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+
+    let now = SystemTime::now();
+    let mut entries = Vec::new();
+
+    let Ok(read_dir) = fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in read_dir.flatten() {
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+
+        let modified = metadata.modified().ok();
+        let is_stale = modified
+            .and_then(|time| now.duration_since(time).ok())
+            .map(|age| age > MAX_CACHE_AGE)
+            .unwrap_or(false);
+
+        if is_stale {
+            let _ = fs::remove_file(entry.path());
+            continue;
+        }
+
+        entries.push((modified, entry.path()));
+    }
+
+    if entries.len() <= MAX_CACHE_FILES {
+        return;
+    }
+
+    entries.sort_by_key(|(modified, _)| *modified);
+    let prune_count = entries.len() - MAX_CACHE_FILES;
+    for (_, path) in entries.into_iter().take(prune_count) {
+        let _ = fs::remove_file(path);
+    }
+}
+
 fn download_texture(url: &str) -> Option<gdk::Texture> {
     if let Some(path) = cache_path(url) {
         if let Ok(bytes) = fs::read(&path) {
@@ -920,6 +964,9 @@ fn download_texture(url: &str) -> Option<gdk::Texture> {
         let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
         let bytes = response.bytes().ok()?.to_vec();
         let _ = fs::write(&path, &bytes);
+        if let Some(dir) = path.parent() {
+            trim_cache(&dir.to_path_buf());
+        }
         return load_texture(bytes);
     }
 

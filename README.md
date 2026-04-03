@@ -96,7 +96,7 @@ cargo run --release -- --monitor auto --player auto
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
-- the cache is local-only and currently grows without eviction
+- the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
 - more transitions can be added on top of the transition hook
 - more advanced styling controls are still pending
@@ -146,6 +146,7 @@ Seeded tickets:
 - `sp-czm.8` — add flip transition mode ✅
 - `sp-czm.11` — cache artwork locally ✅
 - `sp-czm.12` — add example user service ✅
+- `sp-czm.13` — trim artwork cache ✅
 
 To add more work:
 
