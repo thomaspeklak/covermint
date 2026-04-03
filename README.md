@@ -61,6 +61,7 @@ cargo run --release -- --monitor internal --placement top-left --margin 32
 cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)' --corner-radius 18 --opacity 0.92
+# tip: rounded corners tend to look best around --corner-radius 12..24 for medium artwork sizes
 cargo run --release -- --monitor auto --transition fade --transition-ms 220
 cargo run --release -- --monitor auto --transition flip --transition-ms 220
 cargo run --release -- --monitor auto --player vlc --poll-seconds 2

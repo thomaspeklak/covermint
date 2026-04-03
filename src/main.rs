@@ -403,10 +403,17 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let overlay = gtk::Overlay::new();
     overlay.set_size_request(config.width, config.height);
-    overlay.set_halign(gtk::Align::Center);
-    overlay.set_valign(gtk::Align::Center);
+    overlay.set_halign(gtk::Align::Fill);
+    overlay.set_valign(gtk::Align::Fill);
     overlay.set_child(Some(&primary_picture));
     overlay.add_overlay(&secondary_picture);
+
+    let artwork_stage = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    artwork_stage.add_css_class("covermint-artwork-stage");
+    artwork_stage.set_size_request(config.width, config.height);
+    artwork_stage.set_halign(gtk::Align::Center);
+    artwork_stage.set_valign(gtk::Align::Center);
+    artwork_stage.append(&overlay);
 
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("covermint-artwork");
@@ -414,7 +421,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     frame.set_halign(gtk::Align::Fill);
     frame.set_valign(gtk::Align::Fill);
     frame.set_opacity(config.opacity);
-    frame.append(&overlay);
+    frame.append(&artwork_stage);
 
     window.set_child(Some(&frame));
     window.present();
@@ -891,8 +898,9 @@ fn install_styles(config: &Config) {
     let provider = gtk::CssProvider::new();
     let border_width = config.border_width.max(0);
     let corner_radius = config.corner_radius.max(0);
+    let inner_radius = (corner_radius - border_width).max(0);
     let css = format!(
-        ".covermint-window {{ background-color: transparent; box-shadow: none; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; overflow: hidden; }}",
+        ".covermint-window {{ background-color: transparent; box-shadow: none; border-radius: {corner_radius}px; overflow: hidden; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; overflow: hidden; }}\n.covermint-artwork-stage {{ background-color: transparent; box-shadow: none; border-radius: {inner_radius}px; overflow: hidden; }}",
         config.border_color
     );
     provider.load_from_data(&css);
