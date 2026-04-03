@@ -26,6 +26,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - `--margin` shorthand for matching X/Y offsets
 - translucent border styling via `--border-width` and `--border-color`
 - artwork transitions via `--transition` and `--transition-ms`, with eased timing
+- local artwork caching for repeated URLs
 - player selection via `--player` (defaults to `auto`)
 - configurable polling interval via `--poll-seconds`
 
@@ -95,7 +96,7 @@ cargo run --release -- --monitor auto --player auto
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
-- there is no artwork cache yet
+- the cache is local-only and currently grows without eviction
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
 - more transitions can be added on top of the transition hook
 - more advanced styling controls are still pending
@@ -123,6 +124,7 @@ Seeded tickets:
 - `sp-czm.6` — write a polished README ✅
 - `sp-czm.7` — rename the project to Covermint
 - `sp-czm.8` — add flip transition mode ✅
+- `sp-czm.11` — cache artwork locally ✅
 
 To add more work:
 

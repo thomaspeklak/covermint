@@ -2,7 +2,10 @@ use gtk::{gdk, glib, prelude::*};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use std::{
     cell::RefCell,
-    env,
+    collections::hash_map::DefaultHasher,
+    env, fs,
+    hash::{Hash, Hasher},
+    path::PathBuf,
     process::Command,
     rc::Rc,
     time::{Duration, Instant},
@@ -884,9 +887,43 @@ fn run_command(program: &str, args: &[&str]) -> Option<String> {
         .map(|stdout| stdout.trim().to_string())
 }
 
-fn download_texture(url: &str) -> Option<gdk::Texture> {
-    let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
-    let bytes = response.bytes().ok()?;
-    let bytes = glib::Bytes::from_owned(bytes.to_vec());
+fn load_texture(bytes: Vec<u8>) -> Option<gdk::Texture> {
+    let bytes = glib::Bytes::from_owned(bytes);
     gdk::Texture::from_bytes(&bytes).ok()
+}
+
+fn cache_dir() -> Option<PathBuf> {
+    let base = env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))?;
+    Some(base.join("covermint").join("artwork"))
+}
+
+fn cache_path(url: &str) -> Option<PathBuf> {
+    let mut hasher = DefaultHasher::new();
+    url.hash(&mut hasher);
+
+    let dir = cache_dir()?;
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir.join(format!("{:016x}.img", hasher.finish())))
+}
+
+fn download_texture(url: &str) -> Option<gdk::Texture> {
+    if let Some(path) = cache_path(url) {
+        if let Ok(bytes) = fs::read(&path) {
+            if let Some(texture) = load_texture(bytes) {
+                return Some(texture);
+            }
+            let _ = fs::remove_file(&path);
+        }
+
+        let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
+        let bytes = response.bytes().ok()?.to_vec();
+        let _ = fs::write(&path, &bytes);
+        return load_texture(bytes);
+    }
+
+    let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
+    let bytes = response.bytes().ok()?.to_vec();
+    load_texture(bytes)
 }
