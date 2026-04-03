@@ -900,6 +900,11 @@ fn cache_dir() -> Option<PathBuf> {
 }
 
 fn cache_path(url: &str) -> Option<PathBuf> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+
     let mut hasher = DefaultHasher::new();
     url.hash(&mut hasher);
 
@@ -952,6 +957,18 @@ fn trim_cache(dir: &PathBuf) {
     }
 }
 
+fn artwork_bytes(url: &str) -> Option<Vec<u8>> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    match parsed.scheme() {
+        "file" => fs::read(parsed.to_file_path().ok()?).ok(),
+        "http" | "https" => {
+            let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
+            Some(response.bytes().ok()?.to_vec())
+        }
+        _ => None,
+    }
+}
+
 fn download_texture(url: &str) -> Option<gdk::Texture> {
     if let Some(path) = cache_path(url) {
         if let Ok(bytes) = fs::read(&path) {
@@ -961,8 +978,7 @@ fn download_texture(url: &str) -> Option<gdk::Texture> {
             let _ = fs::remove_file(&path);
         }
 
-        let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
-        let bytes = response.bytes().ok()?.to_vec();
+        let bytes = artwork_bytes(url)?;
         let _ = fs::write(&path, &bytes);
         if let Some(dir) = path.parent() {
             trim_cache(&dir.to_path_buf());
@@ -970,7 +986,5 @@ fn download_texture(url: &str) -> Option<gdk::Texture> {
         return load_texture(bytes);
     }
 
-    let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
-    let bytes = response.bytes().ok()?.to_vec();
-    load_texture(bytes)
+    load_texture(artwork_bytes(url)?)
 }

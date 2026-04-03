@@ -26,7 +26,8 @@ This repo is still an early spike, but it already works for the basic flow:
 - `--margin` shorthand for matching X/Y offsets
 - translucent border styling via `--border-width` and `--border-color`
 - artwork transitions via `--transition` and `--transition-ms`, with eased timing
-- local artwork caching for repeated URLs
+- local artwork caching for repeated remote URLs
+- support for `file://` artwork URLs exposed by MPRIS players
 - player selection via `--player` (defaults to `auto`)
 - configurable polling interval via `--poll-seconds`
 
@@ -38,7 +39,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - a compositor with `layer-shell` support
 - `playerctl` in `PATH`
 - an MPRIS-compatible player exposing `mpris:artUrl`
-- network access for the artwork URL
+- network access for remote artwork URLs
 
 ### Build
 
@@ -97,6 +98,7 @@ cargo run --release -- --monitor auto --player auto
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system
+- only `http`, `https`, and `file` artwork URLs are supported right now
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
 - more transitions can be added on top of the transition hook
 - more advanced styling controls are still pending
@@ -145,6 +147,7 @@ Seeded tickets:
 - `sp-czm.11` — cache artwork locally ✅
 - `sp-czm.12` — add example user service ✅
 - `sp-czm.13` — trim artwork cache ✅
+- `sp-czm.15` — support file:// artwork URLs ✅
 
 To add more work:
 
