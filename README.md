@@ -135,6 +135,10 @@ systemctl --user enable --now covermint.service
 
 The example unit uses `%h/.local/bin/covermint`, which resolves to `~/.local/bin/covermint` for a user service. You will probably want to customize the `ExecStart=` line for your monitor, placement, size, transition settings, and binary path.
 
+## Branding assets
+
+- `assets/branding/covermint-logo-grunge.png` — grungy Covermint logo for splash/branding use
+
 ## Ticket tracking with Beads
 
 This project uses **Beads** for local ticket tracking.
