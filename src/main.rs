@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
+const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
 
 #[derive(Clone, Debug)]
 struct Config {
@@ -31,6 +31,8 @@ struct Config {
     poll_seconds: u32,
     show_paused: bool,
     cache_enabled: bool,
+    cache_max_files: usize,
+    cache_max_bytes: u64,
     layer: ShellLayer,
 }
 
@@ -183,6 +185,8 @@ impl Default for Config {
             poll_seconds: 2,
             show_paused: false,
             cache_enabled: true,
+            cache_max_files: 128,
+            cache_max_bytes: 256 * 1024 * 1024,
             layer: ShellLayer::Background,
         }
     }
@@ -245,6 +249,17 @@ impl StartupAction {
                 }
                 "--show-paused" => config.show_paused = true,
                 "--no-cache" => config.cache_enabled = false,
+                "--cache-max-files" => {
+                    config.cache_max_files = parse_usize(
+                        next_arg(&mut args, "--cache-max-files")?,
+                        "--cache-max-files",
+                    )?
+                }
+                "--cache-max-mb" => {
+                    config.cache_max_bytes =
+                        parse_u64(next_arg(&mut args, "--cache-max-mb")?, "--cache-max-mb")?
+                            .saturating_mul(1024 * 1024)
+                }
                 "--layer" => config.layer = ShellLayer::parse(&next_arg(&mut args, "--layer")?)?,
                 "--list-monitors" => list_monitors = true,
                 "--list-players" => list_players = true,
@@ -354,6 +369,18 @@ fn parse_u32(value: String, flag: &str) -> Result<u32, String> {
         .map_err(|_| format!("invalid integer for {flag}: {value}"))
 }
 
+fn parse_u64(value: String, flag: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|_| format!("invalid integer for {flag}: {value}"))
+}
+
+fn parse_usize(value: String, flag: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|_| format!("invalid integer for {flag}: {value}"))
+}
+
 fn parse_opacity(value: String) -> Result<f64, String> {
     let opacity = value
         .parse::<f64>()
@@ -451,7 +478,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                     .unwrap_or(true);
 
                 if needs_reload {
-                    match download_texture(&art_url, config_ref.cache_enabled) {
+                    match download_texture(&art_url, &config_ref) {
                         Some(texture) => {
                             let has_existing_art = current_url.borrow().is_some();
                             set_artwork_texture(
@@ -1108,12 +1135,12 @@ fn cache_path(url: &str) -> Option<PathBuf> {
     Some(dir.join(format!("{:016x}.img", hasher.finish())))
 }
 
-fn trim_cache(dir: &PathBuf) {
-    const MAX_CACHE_FILES: usize = 128;
+fn trim_cache(dir: &PathBuf, max_files: usize, max_bytes: u64) {
     const MAX_CACHE_AGE: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
     let now = SystemTime::now();
     let mut entries = Vec::new();
+    let mut total_bytes = 0_u64;
 
     let Ok(read_dir) = fs::read_dir(dir) else {
         return;
@@ -1138,16 +1165,19 @@ fn trim_cache(dir: &PathBuf) {
             continue;
         }
 
-        entries.push((modified, entry.path()));
+        let size = metadata.len();
+        total_bytes = total_bytes.saturating_add(size);
+        entries.push((modified, entry.path(), size));
     }
 
-    if entries.len() <= MAX_CACHE_FILES {
-        return;
-    }
+    entries.sort_by_key(|(modified, _, _)| *modified);
 
-    entries.sort_by_key(|(modified, _)| *modified);
-    let prune_count = entries.len() - MAX_CACHE_FILES;
-    for (_, path) in entries.into_iter().take(prune_count) {
+    while entries.len() > max_files || total_bytes > max_bytes {
+        let Some((_, path, size)) = entries.first().cloned() else {
+            break;
+        };
+        entries.remove(0);
+        total_bytes = total_bytes.saturating_sub(size);
         let _ = fs::remove_file(path);
     }
 }
@@ -1164,11 +1194,12 @@ fn artwork_bytes(url: &str) -> Option<Vec<u8>> {
     }
 }
 
-fn download_texture(url: &str, cache_enabled: bool) -> Option<gdk::Texture> {
-    if cache_enabled {
+fn download_texture(url: &str, config: &Config) -> Option<gdk::Texture> {
+    if config.cache_enabled {
         if let Some(path) = cache_path(url) {
             if let Ok(bytes) = fs::read(&path) {
-                if let Some(texture) = load_texture(bytes) {
+                if let Some(texture) = load_texture(bytes.clone()) {
+                    let _ = fs::write(&path, &bytes);
                     return Some(texture);
                 }
                 let _ = fs::remove_file(&path);
@@ -1177,7 +1208,11 @@ fn download_texture(url: &str, cache_enabled: bool) -> Option<gdk::Texture> {
             let bytes = artwork_bytes(url)?;
             let _ = fs::write(&path, &bytes);
             if let Some(dir) = path.parent() {
-                trim_cache(&dir.to_path_buf());
+                trim_cache(
+                    &dir.to_path_buf(),
+                    config.cache_max_files,
+                    config.cache_max_bytes,
+                );
             }
             return load_texture(bytes);
         }

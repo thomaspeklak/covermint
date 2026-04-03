@@ -21,7 +21,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - fixed artwork frame sizing and placement controls for presets, per-axis offsets, and symmetric margins
 - styling controls for borders, rounded corners, layer selection, and overall artwork opacity
 - `none`, `fade`, and `flip` transitions with configurable timing and eased motion
-- local caching for remote artwork plus support for `file://` artwork URLs exposed by MPRIS players
+- local caching for remote artwork, including configurable size/count limits and `file://` support
 - player selection/discovery, configurable polling, and optional paused-state visibility
 
 For the exact flag surface, use the **CLI reference** below.
@@ -68,6 +68,7 @@ cargo run --release -- --monitor auto --player vlc --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
 cargo run --release -- --monitor auto --show-paused
 cargo run --release -- --monitor auto --no-cache
+cargo run --release -- --monitor auto --cache-max-files 64 --cache-max-mb 128
 ```
 
 ## CLI reference
@@ -95,6 +96,8 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 --poll-seconds <n>          Refresh interval
 --show-paused               Keep the last artwork visible while playback is paused
 --no-cache                  Disable remote artwork cache reads and writes
+--cache-max-files <n>       Cap the remote artwork cache entry count (default: 128)
+--cache-max-mb <n>          Cap the remote artwork cache size in MiB (default: 256)
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
 --list-players              Print detected MPRIS player names and exit
@@ -102,6 +105,8 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 ```
 
 `auto` prefers an internal monitor and otherwise falls back to the first detected monitor. `external` prefers the first non-internal monitor and otherwise also falls back to the first detected monitor. If an explicit monitor selector cannot be resolved, Covermint lets the compositor choose and logs that fallback. Use `--list-monitors` to see the connector and model/manufacturer strings that matching can target.
+
+Cache note: the default bounded cache reduces repeated downloads while still trimming old or cold entries. Use `--no-cache` if you prefer stateless fetches instead of reuse.
 
 ## Current limitations
 
@@ -111,7 +116,7 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 - artwork is scaled to the configured frame size in both directions; tune it with `--size`, `--width`, and `--height`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - paused artwork stays hidden unless `--show-paused` is enabled
-- the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system when enabled
+- the cache is local-only and bounded by simple LRU-style file-count and size limits when enabled
 - only `http`, `https`, and `file` artwork URLs are supported right now
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
 - more transitions can be added on top of the transition hook
@@ -134,7 +139,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now covermint.service
 ```
 
-The example unit uses `%h/.local/bin/covermint`, which resolves to `~/.local/bin/covermint` for a user service. You will probably want to customize the `ExecStart=` line for your monitor, placement, size, transition settings, and binary path.
+The example unit uses `%h/.local/bin/covermint`, which resolves to `~/.local/bin/covermint` for a user service. You will probably want to customize the `ExecStart=` line for your monitor, placement, size, transition settings, cache policy, and binary path.
 
 ## Branding assets
 
