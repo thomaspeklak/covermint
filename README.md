@@ -117,9 +117,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now covermint.service
 ```
 
-You will probably want to customize the `ExecStart=` line for your monitor, placement, size, and transition settings.
-
-If your binary is not installed at `%h/.local/bin/covermint`, update the path in the service file.
+You will probably want to customize the `ExecStart=` line for your monitor, placement, size, transition settings, and binary path.
 
 ## Ticket tracking with Beads
 
