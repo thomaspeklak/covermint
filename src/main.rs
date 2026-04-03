@@ -56,6 +56,7 @@ enum AxisPlacement {
 enum Transition {
     None,
     Fade,
+    Flip,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,7 +83,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|none] [--transition-ms 180] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -201,8 +202,9 @@ impl Transition {
         match value.to_ascii_lowercase().as_str() {
             "none" => Ok(Self::None),
             "fade" => Ok(Self::Fade),
+            "flip" => Ok(Self::Flip),
             other => Err(format!(
-                "unsupported --transition value '{other}', expected one of: none, fade"
+                "unsupported --transition value '{other}', expected one of: none, fade, flip"
             )),
         }
     }
@@ -368,6 +370,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                             &secondary_picture_ref,
                             &active_slot,
                             &transition_source,
+                            &config_ref,
                         );
                         *current_url.borrow_mut() = None;
                         window_ref.set_visible(false);
@@ -384,6 +387,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                 &secondary_picture_ref,
                 &active_slot,
                 &transition_source,
+                &config_ref,
             );
             *current_url.borrow_mut() = None;
             window_ref.set_visible(false);
@@ -404,6 +408,8 @@ fn new_artwork_picture(config: &Config) -> gtk::Picture {
     picture.set_height_request(config.height);
     picture.set_can_shrink(false);
     picture.set_content_fit(gtk::ContentFit::Contain);
+    picture.set_halign(gtk::Align::Center);
+    picture.set_valign(gtk::Align::Center);
     picture
 }
 
@@ -433,9 +439,36 @@ fn stop_transition(transition_source: &Rc<RefCell<Option<glib::SourceId>>>) {
     }
 }
 
-fn clear_picture(picture: &gtk::Picture) {
+fn reset_picture_size(picture: &gtk::Picture, width: i32, height: i32) {
+    picture.set_width_request(width);
+    picture.set_height_request(height);
+}
+
+fn flip_width(width: i32, progress: f64) -> i32 {
+    ((width as f64 * progress.clamp(0.0, 1.0)).round() as i32).max(1)
+}
+
+fn apply_transition_frame(
+    picture: &gtk::Picture,
+    width: i32,
+    height: i32,
+    transition: Transition,
+    progress: f64,
+    opacity: f64,
+) {
+    let width = match transition {
+        Transition::Flip => flip_width(width, progress),
+        Transition::None | Transition::Fade => width,
+    };
+    picture.set_width_request(width);
+    picture.set_height_request(height);
+    picture.set_opacity(opacity.clamp(0.0, 1.0));
+}
+
+fn clear_picture(picture: &gtk::Picture, width: i32, height: i32) {
     picture.set_paintable(Option::<&gdk::Texture>::None);
     picture.set_opacity(0.0);
+    reset_picture_size(picture, width, height);
 }
 
 fn set_artwork_texture(
@@ -452,9 +485,10 @@ fn set_artwork_texture(
     if !animate || config.transition == Transition::None || config.transition_ms == 0 {
         let (active_picture, inactive_picture) =
             active_picture_pair(primary, secondary, *active_slot.borrow());
+        reset_picture_size(&active_picture, config.width, config.height);
         active_picture.set_paintable(Some(texture));
         active_picture.set_opacity(1.0);
-        clear_picture(&inactive_picture);
+        clear_picture(&inactive_picture, config.width, config.height);
         return;
     }
 
@@ -466,22 +500,46 @@ fn set_artwork_texture(
     let (from_picture, to_picture) = active_picture_pair(primary, secondary, current_slot);
 
     to_picture.set_paintable(Some(texture));
-    to_picture.set_opacity(0.0);
-    from_picture.set_opacity(1.0);
+    apply_transition_frame(
+        &to_picture,
+        config.width,
+        config.height,
+        config.transition,
+        0.0,
+        0.0,
+    );
+    apply_transition_frame(
+        &from_picture,
+        config.width,
+        config.height,
+        config.transition,
+        1.0,
+        1.0,
+    );
 
     let active_slot = active_slot.clone();
     let transition_source = transition_source.clone();
     let start = Instant::now();
     let duration = Duration::from_millis(config.transition_ms as u64);
+    let transition = config.transition;
+    let width = config.width;
+    let height = config.height;
 
     let source_id = glib::timeout_add_local(Duration::from_millis(16), move || {
         let progress = (start.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
-        to_picture.set_opacity(progress);
-        from_picture.set_opacity(1.0 - progress);
+        apply_transition_frame(&to_picture, width, height, transition, progress, progress);
+        apply_transition_frame(
+            &from_picture,
+            width,
+            height,
+            transition,
+            1.0 - progress,
+            1.0 - progress,
+        );
 
         if progress >= 1.0 {
-            clear_picture(&from_picture);
-            to_picture.set_opacity(1.0);
+            clear_picture(&from_picture, width, height);
+            apply_transition_frame(&to_picture, width, height, transition, 1.0, 1.0);
             *active_slot.borrow_mut() = next_slot;
             *transition_source.borrow_mut() = None;
             return glib::ControlFlow::Break;
@@ -498,11 +556,12 @@ fn clear_artwork(
     secondary: &gtk::Picture,
     active_slot: &Rc<RefCell<ArtworkSlot>>,
     transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
+    config: &Config,
 ) {
     stop_transition(transition_source);
 
-    clear_picture(primary);
-    clear_picture(secondary);
+    clear_picture(primary, config.width, config.height);
+    clear_picture(secondary, config.width, config.height);
     primary.set_opacity(1.0);
     *active_slot.borrow_mut() = ArtworkSlot::Primary;
 }

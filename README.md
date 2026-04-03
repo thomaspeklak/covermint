@@ -63,6 +63,7 @@ cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)'
 cargo run --release -- --monitor auto --transition fade --transition-ms 220
+cargo run --release -- --monitor auto --transition flip --transition-ms 220
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
 ```
@@ -81,7 +82,7 @@ cargo run --release -- --monitor auto --player auto
 --margin <px>               Shorthand for setting both --offset-x and --offset-y
 --border-width <px>         Border width in pixels
 --border-color <css-color>  Border color, including alpha-capable values like rgba(...)
---transition none|fade      Artwork transition style
+--transition none|fade|flip Artwork transition style
 --transition-ms <n>         Transition duration in milliseconds
 --poll-seconds <n>          Refresh interval
 --layer background|bottom   Choose the layer-shell layer
@@ -95,7 +96,8 @@ cargo run --release -- --monitor auto --player auto
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - there is no artwork cache yet
-- only `fade` is implemented so far; more transitions can be added on top of the new transition hook
+- `flip` is a GTK-friendly horizontal squeeze / swap effect rather than a true 3D compositor transform
+- more transitions can be added on top of the transition hook
 - more advanced styling controls are still pending
 
 ## Ticket tracking with Beads
@@ -120,7 +122,7 @@ Seeded tickets:
 - `sp-czm.5` — improve custom sizing controls ✅
 - `sp-czm.6` — write a polished README ✅
 - `sp-czm.7` — rename the project to Covermint
-- `sp-czm.8` — add flip transition mode
+- `sp-czm.8` — add flip transition mode ✅
 
 To add more work:
 
