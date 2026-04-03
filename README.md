@@ -24,7 +24,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - placement presets via `--placement`
 - per-axis offsets via `--offset-x` / `--offset-y`
 - `--margin` shorthand for matching X/Y offsets
-- translucent border styling via `--border-width` and `--border-color`
+- translucent border styling via `--border-width`, `--border-color`, and `--corner-radius`
 - artwork transitions via `--transition` and `--transition-ms`, with eased timing
 - local artwork caching for repeated remote URLs
 - support for `file://` artwork URLs exposed by MPRIS players
@@ -64,7 +64,7 @@ cargo run --release -- --monitor auto --layer background
 cargo run --release -- --monitor internal --placement top-left --margin 32
 cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
-cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)'
+cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)' --corner-radius 18
 cargo run --release -- --monitor auto --transition fade --transition-ms 220
 cargo run --release -- --monitor auto --transition flip --transition-ms 220
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
@@ -87,6 +87,7 @@ cargo run --release -- --monitor auto --show-paused
 --margin <px>               Shorthand for setting both --offset-x and --offset-y
 --border-width <px>         Border width in pixels
 --border-color <css-color>  Border color, including alpha-capable values like rgba(...)
+--corner-radius <px>        Corner radius in pixels
 --transition none|fade|flip Artwork transition style
 --transition-ms <n>         Transition duration in milliseconds
 --poll-seconds <n>          Refresh interval
@@ -106,7 +107,7 @@ cargo run --release -- --monitor auto --show-paused
 - only `http`, `https`, and `file` artwork URLs are supported right now
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
 - more transitions can be added on top of the transition hook
-- more advanced styling controls are still pending
+- more advanced styling controls are still pending beyond border/radius polish
 
 ## Running as a user service
 
@@ -155,6 +156,7 @@ Seeded tickets:
 - `sp-czm.15` — support file:// artwork URLs ✅
 - `sp-czm.16` — add internal/external monitor aliases ✅
 - `sp-czm.17` — optionally keep artwork visible while paused ✅
+- `sp-czm.18` — add configurable corner radius ✅
 
 To add more work:
 

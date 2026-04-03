@@ -22,6 +22,7 @@ struct Config {
     offset_y: i32,
     border_width: i32,
     border_color: String,
+    corner_radius: i32,
     transition: Transition,
     transition_ms: u32,
     poll_seconds: u32,
@@ -88,7 +89,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -130,6 +131,7 @@ impl Config {
             offset_y: 48,
             border_width: 0,
             border_color: "rgba(255,255,255,0.35)".to_string(),
+            corner_radius: 0,
             transition: Transition::Fade,
             transition_ms: 180,
             poll_seconds: 2,
@@ -171,6 +173,10 @@ impl Config {
                         parse_i32(next_arg(&mut args, "--border-width")?, "--border-width")?
                 }
                 "--border-color" => config.border_color = next_arg(&mut args, "--border-color")?,
+                "--corner-radius" => {
+                    config.corner_radius =
+                        parse_i32(next_arg(&mut args, "--corner-radius")?, "--corner-radius")?
+                }
                 "--transition" => {
                     config.transition = Transition::parse(&next_arg(&mut args, "--transition")?)?
                 }
@@ -764,8 +770,9 @@ fn apply_anchor_fallback(window: &gtk::ApplicationWindow, config: &Config) {
 fn install_styles(config: &Config) {
     let provider = gtk::CssProvider::new();
     let border_width = config.border_width.max(0);
+    let corner_radius = config.corner_radius.max(0);
     let css = format!(
-        ".covermint-window {{ background-color: transparent; box-shadow: none; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; }}",
+        ".covermint-window {{ background-color: transparent; box-shadow: none; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; overflow: hidden; }}",
         config.border_color
     );
     provider.load_from_data(&css);
