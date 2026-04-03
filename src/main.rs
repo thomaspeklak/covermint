@@ -27,6 +27,7 @@ struct Config {
     transition_ms: u32,
     poll_seconds: u32,
     show_paused: bool,
+    cache_enabled: bool,
     layer: ShellLayer,
     list_monitors: bool,
     list_players: bool,
@@ -90,7 +91,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--layer background|bottom] [--list-monitors] [--list-players]"
+                "usage: covermint [--monitor auto|internal|external|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--layer background|bottom] [--list-monitors] [--list-players]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -143,6 +144,7 @@ impl Config {
             transition_ms: 180,
             poll_seconds: 2,
             show_paused: false,
+            cache_enabled: true,
             layer: ShellLayer::Background,
             list_monitors: false,
             list_players: false,
@@ -197,6 +199,7 @@ impl Config {
                         parse_u32(next_arg(&mut args, "--poll-seconds")?, "--poll-seconds")?
                 }
                 "--show-paused" => config.show_paused = true,
+                "--no-cache" => config.cache_enabled = false,
                 "--layer" => {
                     config.layer = match next_arg(&mut args, "--layer")?.as_str() {
                         "background" => ShellLayer::Background,
@@ -367,7 +370,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                     .unwrap_or(true);
 
                 if needs_reload {
-                    match download_texture(&art_url) {
+                    match download_texture(&art_url, config_ref.cache_enabled) {
                         Some(texture) => {
                             let has_existing_art = current_url.borrow().is_some();
                             set_artwork_texture(
@@ -1015,21 +1018,23 @@ fn artwork_bytes(url: &str) -> Option<Vec<u8>> {
     }
 }
 
-fn download_texture(url: &str) -> Option<gdk::Texture> {
-    if let Some(path) = cache_path(url) {
-        if let Ok(bytes) = fs::read(&path) {
-            if let Some(texture) = load_texture(bytes) {
-                return Some(texture);
+fn download_texture(url: &str, cache_enabled: bool) -> Option<gdk::Texture> {
+    if cache_enabled {
+        if let Some(path) = cache_path(url) {
+            if let Ok(bytes) = fs::read(&path) {
+                if let Some(texture) = load_texture(bytes) {
+                    return Some(texture);
+                }
+                let _ = fs::remove_file(&path);
             }
-            let _ = fs::remove_file(&path);
-        }
 
-        let bytes = artwork_bytes(url)?;
-        let _ = fs::write(&path, &bytes);
-        if let Some(dir) = path.parent() {
-            trim_cache(&dir.to_path_buf());
+            let bytes = artwork_bytes(url)?;
+            let _ = fs::write(&path, &bytes);
+            if let Some(dir) = path.parent() {
+                trim_cache(&dir.to_path_buf());
+            }
+            return load_texture(bytes);
         }
-        return load_texture(bytes);
     }
 
     load_texture(artwork_bytes(url)?)

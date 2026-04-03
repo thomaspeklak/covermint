@@ -27,7 +27,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - `--margin` shorthand for matching X/Y offsets
 - translucent border styling via `--border-width`, `--border-color`, and `--corner-radius`
 - artwork transitions via `--transition` and `--transition-ms`, with eased timing
-- local artwork caching for repeated remote URLs
+- local artwork caching for repeated remote URLs, with `--no-cache` support when desired
 - support for `file://` artwork URLs exposed by MPRIS players
 - player selection via `--player` (defaults to `auto`)
 - configurable polling interval via `--poll-seconds`
@@ -72,6 +72,7 @@ cargo run --release -- --monitor auto --transition flip --transition-ms 220
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
 cargo run --release -- --monitor auto --show-paused
+cargo run --release -- --monitor auto --no-cache
 ```
 
 ## CLI reference
@@ -94,6 +95,7 @@ cargo run --release -- --monitor auto --show-paused
 --transition-ms <n>         Transition duration in milliseconds
 --poll-seconds <n>          Refresh interval
 --show-paused               Keep the last artwork visible while playback is paused
+--no-cache                  Disable remote artwork cache reads and writes
 --layer background|bottom   Choose the layer-shell layer
 --list-monitors             Print detected monitors and exit
 --list-players              Print detected MPRIS player names and exit
@@ -106,7 +108,7 @@ cargo run --release -- --monitor auto --show-paused
 - some players, including Spotify, often expose artwork around `640x640`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - paused artwork stays hidden unless `--show-paused` is enabled
-- the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system
+- the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system when enabled
 - only `http`, `https`, and `file` artwork URLs are supported right now
 - `flip` is a GTK-friendly horizontal squeeze / swap effect with subtle spring easing rather than a true 3D compositor transform
 - more transitions can be added on top of the transition hook
@@ -161,6 +163,7 @@ Seeded tickets:
 - `sp-czm.17` — optionally keep artwork visible while paused ✅
 - `sp-czm.18` — add configurable corner radius ✅
 - `sp-czm.19` — add player discovery command ✅
+- `sp-czm.20` — allow disabling remote artwork cache ✅
 
 To add more work:
 
