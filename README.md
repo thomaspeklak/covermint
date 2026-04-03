@@ -25,7 +25,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - per-axis offsets via `--offset-x` / `--offset-y`
 - `--margin` shorthand for matching X/Y offsets
 - translucent border styling via `--border-width` and `--border-color`
-- player selection via `--player`
+- player selection via `--player` (defaults to `auto`)
 - configurable polling interval via `--poll-seconds`
 
 ## Requirements
@@ -41,7 +41,7 @@ This repo is still an early spike, but it already works for the basic flow:
 ### Build
 
 - recent Rust toolchain
-- GTK4 development libraries
+- GTK 4.8+ development libraries
 - `gtk4-layer-shell` development libraries
 
 Package names vary by distro, so the README intentionally stays generic instead of assuming one specific setup.
@@ -62,13 +62,14 @@ cargo run --release -- --monitor HDMI-A-1 --placement center --offset-y -40
 cargo run --release -- --monitor HDMI-A-1 --width 520 --height 420 --placement bottom-right --offset-x 64 --offset-y 64
 cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,255,255,0.28)'
 cargo run --release -- --monitor auto --player spotify --poll-seconds 2
+cargo run --release -- --monitor auto --player auto
 ```
 
 ## CLI reference
 
 ```text
 --monitor auto|<name>       Pick a monitor by connector or matching description
---player <name>             MPRIS player name passed to playerctl
+--player auto|<name>        MPRIS player name passed to playerctl; auto uses the active/default player
 --size <px>                 Shorthand for setting both --width and --height
 --width <px>                Artwork width in pixels
 --height <px>               Artwork height in pixels
@@ -88,6 +89,7 @@ cargo run --release -- --monitor auto --player spotify --poll-seconds 2
 - the app polls instead of reacting to MPRIS signals
 - placement is computed from monitor geometry once at startup and is not yet recomputed on monitor hotplug or resolution changes
 - some players, including Spotify, often expose artwork around `640x640`
+- automatic player selection depends on `playerctl`'s active/default player behavior
 - there is no artwork cache yet
 - transitions and more advanced styling controls are still pending
 

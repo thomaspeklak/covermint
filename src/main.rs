@@ -62,7 +62,7 @@ fn main() -> glib::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: covermint [--monitor auto|eDP-1] [--player spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
+                "usage: covermint [--monitor auto|eDP-1] [--player auto|spotify] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--poll-seconds 2] [--layer background|bottom] [--list-monitors]"
             );
             return glib::ExitCode::FAILURE;
         }
@@ -96,7 +96,7 @@ impl Config {
     fn from_env() -> Result<Self, String> {
         let mut config = Self {
             monitor_selector: "auto".to_string(),
-            player: "spotify".to_string(),
+            player: "auto".to_string(),
             width: 420,
             height: 420,
             placement: Placement::BottomRight,
@@ -496,7 +496,6 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
     all.into_iter().find(|monitor| {
         [
             monitor.connector().map(|v| v.to_string()),
-            monitor.description().map(|v| v.to_string()),
             monitor.manufacturer().map(|v| v.to_string()),
             monitor.model().map(|v| v.to_string()),
         ]
@@ -513,13 +512,11 @@ fn is_internal_connector(connector: &str) -> bool {
 
 fn monitor_label(monitor: &gdk::Monitor) -> String {
     let connector = monitor.connector().map(|value| value.to_string());
-    let description = monitor.description().map(|value| value.to_string());
     let manufacturer = monitor.manufacturer().map(|value| value.to_string());
     let model = monitor.model().map(|value| value.to_string());
 
     [
         connector,
-        description,
         manufacturer.zip(model).map(|(a, b)| format!("{a} {b}")),
     ]
     .into_iter()
@@ -529,16 +526,25 @@ fn monitor_label(monitor: &gdk::Monitor) -> String {
 }
 
 fn query_player(player: &str) -> Option<MediaState> {
-    let status = run_command("playerctl", &["-p", player, "status"])?;
+    let auto_player = player.eq_ignore_ascii_case("auto");
+    let status = if auto_player {
+        run_command("playerctl", &["status"])?
+    } else {
+        run_command("playerctl", &["-p", player, "status"])?
+    };
     let status = if status.trim() == "Playing" {
         PlaybackStatus::Playing
     } else {
         PlaybackStatus::NotPlaying
     };
 
-    let art_url = run_command("playerctl", &["-p", player, "metadata", "mpris:artUrl"])
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+    let art_url = if auto_player {
+        run_command("playerctl", &["metadata", "mpris:artUrl"])
+    } else {
+        run_command("playerctl", &["-p", player, "metadata", "mpris:artUrl"])
+    }
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty());
 
     Some(MediaState { status, art_url })
 }
