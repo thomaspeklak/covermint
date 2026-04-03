@@ -590,7 +590,7 @@ fn set_artwork_texture(
     );
 
     let active_slot = active_slot.clone();
-    let transition_source = transition_source.clone();
+    let transition_source_for_closure = transition_source.clone();
     let start = Instant::now();
     let duration = Duration::from_millis(config.transition_ms as u64);
     let transition = config.transition;
@@ -616,7 +616,7 @@ fn set_artwork_texture(
                 },
             );
             *active_slot.borrow_mut() = next_slot;
-            *transition_source.borrow_mut() = None;
+            *transition_source_for_closure.borrow_mut() = None;
             return glib::ControlFlow::Break;
         }
 
