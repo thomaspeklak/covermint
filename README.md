@@ -21,7 +21,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - monitor discovery via `--list-monitors`
 - player discovery via `--list-players`
 - layer selection via `--layer background|bottom`
-- sizing via `--size`, `--width`, and `--height`
+- fixed artwork frame sizing via `--size`, `--width`, and `--height`
 - placement presets via `--placement`
 - per-axis offsets via `--offset-x` / `--offset-y`
 - `--margin` shorthand for matching X/Y offsets
@@ -108,6 +108,7 @@ cargo run --release -- --monitor auto --no-cache
 - the app polls instead of reacting to MPRIS signals
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
+- artwork is scaled to the configured frame size; tune it with `--size`, `--width`, and `--height`
 - automatic player selection depends on `playerctl`'s active/default player behavior
 - paused artwork stays hidden unless `--show-paused` is enabled
 - the cache is local-only and uses a lightweight retention policy rather than a configurable eviction system when enabled
@@ -168,6 +169,7 @@ Seeded tickets:
 - `sp-czm.20` — allow disabling remote artwork cache ✅
 - `sp-czm.21` — add overall artwork opacity control ✅
 - `sp-czm.22` — allow monitor selection by index ✅
+- `sp-czm.23` — keep artwork window size stable across images ✅
 
 To add more work:
 

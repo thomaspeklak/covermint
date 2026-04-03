@@ -319,6 +319,7 @@ fn parse_opacity(value: String) -> Result<f64, String> {
 }
 
 fn build_ui(app: &gtk::Application, config: Rc<Config>) {
+    let (window_width, window_height) = artwork_window_size(&config);
     let window = gtk::ApplicationWindow::builder()
         .application(app)
         .title("covermint")
@@ -329,7 +330,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     window.set_focusable(false);
     window.set_can_focus(false);
     window.set_can_target(false);
-    window.set_default_size(config.width, config.height);
+    window.set_default_size(window_width, window_height);
+    window.set_size_request(window_width, window_height);
     window.add_css_class("covermint-window");
 
     window.init_layer_shell();
@@ -350,11 +352,19 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     secondary_picture.set_opacity(0.0);
 
     let overlay = gtk::Overlay::new();
+    overlay.set_width_request(config.width);
+    overlay.set_height_request(config.height);
+    overlay.set_halign(gtk::Align::Center);
+    overlay.set_valign(gtk::Align::Center);
     overlay.set_child(Some(&primary_picture));
     overlay.add_overlay(&secondary_picture);
 
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("covermint-artwork");
+    frame.set_width_request(window_width);
+    frame.set_height_request(window_height);
+    frame.set_halign(gtk::Align::Fill);
+    frame.set_valign(gtk::Align::Fill);
     frame.set_opacity(config.opacity);
     frame.append(&overlay);
 
@@ -488,6 +498,11 @@ struct TransitionFrame {
 fn reset_picture_size(picture: &gtk::Picture, width: i32, height: i32) {
     picture.set_width_request(width);
     picture.set_height_request(height);
+}
+
+fn artwork_window_size(config: &Config) -> (i32, i32) {
+    let border = config.border_width.max(0) * 2;
+    (config.width + border, config.height + border)
 }
 
 fn ease_in_out_cubic(progress: f64) -> f64 {
@@ -720,16 +735,17 @@ fn apply_placement(
 
     if let Some(monitor) = monitor {
         let geometry = monitor.geometry();
+        let (window_width, window_height) = artwork_window_size(config);
         let x = axis_offset(
             config.placement.horizontal(),
             geometry.width(),
-            config.width,
+            window_width,
             config.offset_x,
         );
         let y = axis_offset(
             config.placement.vertical(),
             geometry.height(),
-            config.height,
+            window_height,
             config.offset_y,
         );
 
