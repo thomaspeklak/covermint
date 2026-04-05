@@ -12,6 +12,7 @@ use std::{
 };
 
 const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
+const SPLASH_LOGO: &[u8] = include_bytes!("../assets/branding/covermint-logo-grunge.png");
 
 #[derive(Clone, Debug)]
 struct Config {
@@ -110,6 +111,13 @@ struct MediaState {
     art_url: Option<String>,
 }
 
+#[derive(Debug)]
+struct StartupSplash {
+    started_at: Instant,
+    visible_since: Option<Instant>,
+    active: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlaybackStatus {
     Playing,
@@ -120,6 +128,45 @@ enum PlaybackStatus {
 impl PlaybackStatus {
     fn should_show_artwork(self, show_paused: bool) -> bool {
         self == Self::Playing || (show_paused && self == Self::Paused)
+    }
+}
+
+impl StartupSplash {
+    const REVEAL_DELAY: Duration = Duration::from_millis(250);
+    const MIN_SHOW: Duration = Duration::from_millis(900);
+    const MAX_SHOW: Duration = Duration::from_secs(3);
+
+    fn new(active: bool) -> Self {
+        Self {
+            started_at: Instant::now(),
+            visible_since: None,
+            active,
+        }
+    }
+
+    fn should_reveal(&self) -> bool {
+        self.active
+            && self.visible_since.is_none()
+            && self.started_at.elapsed() >= Self::REVEAL_DELAY
+    }
+
+    fn can_finish(&self) -> bool {
+        self.visible_since
+            .map(|shown_at| shown_at.elapsed() >= Self::MIN_SHOW)
+            .unwrap_or(true)
+    }
+
+    fn expired(&self) -> bool {
+        self.active && self.started_at.elapsed() >= Self::MAX_SHOW
+    }
+
+    fn reveal(&mut self) {
+        self.visible_since = Some(Instant::now());
+    }
+
+    fn finish(&mut self) {
+        self.active = false;
+        self.visible_since = None;
     }
 }
 
@@ -426,7 +473,16 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let primary_picture = new_artwork_picture(&config);
     let secondary_picture = new_artwork_picture(&config);
+    let splash_picture = new_splash_picture(&config);
     secondary_picture.set_opacity(0.0);
+
+    let splash_enabled = if let Some(texture) = load_texture(SPLASH_LOGO.to_vec()) {
+        splash_picture.set_paintable(Some(&texture));
+        true
+    } else {
+        eprintln!("covermint: failed to load embedded splash logo");
+        false
+    };
 
     let overlay = gtk::Overlay::new();
     overlay.set_size_request(config.width, config.height);
@@ -434,6 +490,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     overlay.set_valign(gtk::Align::Fill);
     overlay.set_child(Some(&primary_picture));
     overlay.add_overlay(&secondary_picture);
+    overlay.add_overlay(&splash_picture);
 
     let artwork_stage = gtk::Box::new(gtk::Orientation::Vertical, 0);
     artwork_stage.add_css_class("covermint-artwork-stage");
@@ -457,14 +514,48 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let current_url = Rc::new(RefCell::new(None::<String>));
     let active_slot = Rc::new(RefCell::new(ArtworkSlot::Primary));
     let transition_source = Rc::new(RefCell::new(None::<glib::SourceId>));
+    let splash_state = Rc::new(RefCell::new(StartupSplash::new(splash_enabled)));
     let primary_picture_ref = primary_picture.clone();
     let secondary_picture_ref = secondary_picture.clone();
+    let splash_picture_ref = splash_picture.clone();
     let window_ref = window.clone();
     let config_ref = config.clone();
     let monitor_status_ref = monitor_status.clone();
+    let splash_state_ref = splash_state.clone();
 
     let refresh = move || {
         sync_window_target(&window_ref, &config_ref, &monitor_status_ref);
+        reveal_startup_splash(&window_ref, &splash_picture_ref, &splash_state_ref);
+
+        let handle_empty_state = || {
+            let (splash_active, splash_visible, splash_expired) = {
+                let splash = splash_state_ref.borrow();
+                (
+                    splash.active,
+                    splash.visible_since.is_some(),
+                    splash.expired(),
+                )
+            };
+
+            if splash_expired {
+                finish_startup_splash(&splash_picture_ref, &splash_state_ref);
+            }
+
+            if splash_active && splash_visible && !splash_expired {
+                window_ref.set_visible(true);
+                return;
+            }
+
+            clear_artwork_and_hide(
+                &window_ref,
+                &current_url,
+                &primary_picture_ref,
+                &secondary_picture_ref,
+                &active_slot,
+                &transition_source,
+                &config_ref,
+            );
+        };
 
         match query_player(&config_ref.player) {
             Some(MediaState {
@@ -494,31 +585,33 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                         }
                         None => {
                             eprintln!("covermint: failed to download artwork");
-                            clear_artwork_and_hide(
-                                &window_ref,
-                                &current_url,
-                                &primary_picture_ref,
-                                &secondary_picture_ref,
-                                &active_slot,
-                                &transition_source,
-                                &config_ref,
-                            );
+                            handle_empty_state();
                             return;
                         }
                     }
                 }
 
+                let (splash_active, splash_visible, splash_can_finish) = {
+                    let splash = splash_state_ref.borrow();
+                    (
+                        splash.active,
+                        splash.visible_since.is_some(),
+                        splash.can_finish(),
+                    )
+                };
+
+                if splash_active {
+                    if !splash_visible || splash_can_finish {
+                        finish_startup_splash(&splash_picture_ref, &splash_state_ref);
+                    } else {
+                        window_ref.set_visible(true);
+                        return;
+                    }
+                }
+
                 window_ref.set_visible(true);
             }
-            _ => clear_artwork_and_hide(
-                &window_ref,
-                &current_url,
-                &primary_picture_ref,
-                &secondary_picture_ref,
-                &active_slot,
-                &transition_source,
-                &config_ref,
-            ),
+            _ => handle_empty_state(),
         }
     };
 
@@ -539,6 +632,19 @@ fn new_artwork_picture(config: &Config) -> gtk::Picture {
     picture.set_vexpand(true);
     picture.set_halign(gtk::Align::Fill);
     picture.set_valign(gtk::Align::Fill);
+    picture
+}
+
+fn new_splash_picture(config: &Config) -> gtk::Picture {
+    let picture = gtk::Picture::new();
+    picture.set_size_request(config.width, config.height);
+    picture.set_can_shrink(true);
+    picture.set_content_fit(gtk::ContentFit::Contain);
+    picture.set_hexpand(true);
+    picture.set_vexpand(true);
+    picture.set_halign(gtk::Align::Fill);
+    picture.set_valign(gtk::Align::Fill);
+    picture.set_visible(false);
     picture
 }
 
@@ -815,6 +921,28 @@ fn clear_artwork_and_hide(
     clear_artwork(primary, secondary, active_slot, transition_source, config);
     *current_url.borrow_mut() = None;
     window.set_visible(false);
+}
+
+fn reveal_startup_splash(
+    window: &gtk::ApplicationWindow,
+    splash_picture: &gtk::Picture,
+    splash_state: &Rc<RefCell<StartupSplash>>,
+) {
+    let mut splash_state = splash_state.borrow_mut();
+    if !splash_state.should_reveal() {
+        return;
+    }
+
+    splash_picture.set_opacity(1.0);
+    splash_picture.set_visible(true);
+    window.set_visible(true);
+    splash_state.reveal();
+}
+
+fn finish_startup_splash(splash_picture: &gtk::Picture, splash_state: &Rc<RefCell<StartupSplash>>) {
+    splash_picture.set_visible(false);
+    splash_picture.set_opacity(1.0);
+    splash_state.borrow_mut().finish();
 }
 
 fn sync_window_target(
