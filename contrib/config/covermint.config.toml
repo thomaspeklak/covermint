@@ -1,0 +1,206 @@
+# Covermint example configuration
+#
+# Destination used by `covermint --init-config`:
+#   ~/.config/covermint/config.toml
+#
+# CLI precedence:
+# - Values in this file set defaults.
+# - Explicit command-line flags always override these values.
+
+# =============================================================================
+# Runtime options (mirrors CLI flags)
+# =============================================================================
+
+# --monitor auto|internal|external|0|#0|eDP-1
+monitor = "auto"
+
+# --player auto|<name>
+player = "auto"
+
+# --size <px> (sets both width and height)
+# size = 420
+
+# --width <px>
+width = 420
+
+# --height <px>
+height = 420
+
+# --placement top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right
+# also supports aliases like tl, tr, cl, cr, bl, br, middle
+placement = "bottom-right"
+
+# --offset-x <px>
+offset_x = 48
+
+# --offset-y <px>
+offset_y = 48
+
+# --margin <px> (sets both offset_x and offset_y)
+# margin = 48
+
+# --border-width <px>
+border_width = 0
+
+# --border-color <css-color>
+border_color = "rgba(255,255,255,0.35)"
+
+# --corner-radius <px>
+corner_radius = 0
+
+# --opacity <0.0-1.0>
+opacity = 1.0
+
+# --transition none|fade|flip|hinge|slide|cover
+transition = "fade"
+
+# --transition-ms <n>
+transition_ms = 180
+
+# --poll-seconds <n>
+poll_seconds = 2
+
+# --show-paused
+show_paused = false
+
+# --no-cache (true means disable cache)
+no_cache = false
+
+# --cache-max-files <n>
+cache_max_files = 128
+
+# --cache-max-mb <n>
+cache_max_mb = 256
+
+# --layer background|bottom
+layer = "background"
+
+# =============================================================================
+# Metadata overlays
+# =============================================================================
+[metadata]
+# Master switch for metadata overlays.
+enabled = true
+
+# -----------------------------------------------------------------------------
+# Global style defaults (applied to both top + left unless overridden per section)
+# -----------------------------------------------------------------------------
+[metadata.style]
+# Any Pango/CSS-like font family string GTK can resolve.
+font_family = "Inter, Sans"
+
+# Font size in px.
+font_size_px = 20
+
+# Numeric weight. Typical values: 400 (normal), 500 (medium), 700 (bold).
+font_weight = 700
+
+# Text and background colors. Use rgba(...) for transparency.
+text_color = "rgba(255,255,255,0.94)"
+background_color = "rgba(0,0,0,0.30)"
+
+# Inner padding inside each metadata band.
+padding_px = 8
+
+# -----------------------------------------------------------------------------
+# Global animation defaults (applied to both top + left unless overridden)
+# -----------------------------------------------------------------------------
+[metadata.animation]
+# Animation mode:
+#   none       -> no animation
+#   typewriter -> character-by-character with intentionally irregular timing
+#   fade       -> per-character fade-in
+mode = "fade"
+
+# Character reveal direction order:
+#   tl-br | l-r | r-l | t-b | b-t | br-tl
+direction = "l-r"
+
+# Total animation duration for one text update.
+duration_ms = 680
+
+# -----------------------------------------------------------------------------
+# Top section (horizontal band above cover)
+# -----------------------------------------------------------------------------
+[metadata.top]
+enabled = true
+
+# Template syntax:
+#   {{artist}} {{title}} {{album}} {{trackNumber}} {{length}}
+# Optional per-field truncation preference modifier:
+#   :start or :end
+# Line breaks are supported via \n
+# Good defaults:
+# template = "{{artist}}"
+# template = "{{artist}} — {{album}}"
+# template = "{{artist}}\n{{album}}"
+template = "{{artist}}"
+
+# Align top text within the cover width:
+#   start -> left aligned
+#   end   -> right aligned
+align = "start"
+
+# Truncation side when text exceeds available width:
+#   start -> …suffix
+#   end   -> prefix…
+truncate = "end"
+
+# Height of the top metadata band.
+band_size_px = 40
+
+# Optional per-section style override (uncomment only what you want)
+# [metadata.top.style]
+# font_size_px = 18
+# text_color = "rgba(255,245,210,0.95)"
+# background_color = "rgba(0,0,0,0.25)"
+# padding_px = 6
+
+# Optional per-section animation override
+# [metadata.top.animation]
+# mode = "fade"
+# direction = "tl-br"
+# duration_ms = 620
+
+# -----------------------------------------------------------------------------
+# Left section (rotated -90° band left of cover)
+# -----------------------------------------------------------------------------
+[metadata.left]
+enabled = true
+
+# Most common left template:
+template = "{{title:end}}"
+
+# Align left text along cover height:
+#   start -> near top of cover
+#   end   -> near bottom of cover
+align = "start"
+
+# Truncation preference for left text.
+truncate = "end"
+
+# Width of the left metadata band.
+band_size_px = 34
+
+# Optional per-section style override
+# [metadata.left.style]
+# font_size_px = 18
+# text_color = "rgba(230,230,255,0.95)"
+# background_color = "rgba(0,0,0,0.22)"
+# padding_px = 6
+
+# Optional per-section animation override
+# [metadata.left.animation]
+# mode = "typewriter"
+# direction = "t-b"
+# duration_ms = 760
+
+# -----------------------------------------------------------------------------
+# Extra template examples
+# -----------------------------------------------------------------------------
+# "{{artist}} — {{title}}"
+# "#{{trackNumber}} {{title}}"
+# "{{artist}}\n{{album}}"
+# "{{title}} · {{length}}"
+# "{{artist:start}}"
+# "{{title:end}}"

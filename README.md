@@ -1,5 +1,9 @@
 # Covermint
 
+<p align="center">
+  <img src="assets/branding/covermint-logo-grunge.png" alt="Covermint logo" width="420" />
+</p>
+
 `covermint` shows the current media cover art as a wallpaper-adjacent **Wayland layer-shell surface**.
 
 Instead of editing your wallpaper file, it opens a small GTK window on the `background` or `bottom` layer so the artwork feels pinned to the desktop and stays behind normal app windows.
@@ -20,6 +24,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - flexible monitor targeting and discovery, including `auto`, `internal`, `external`, numeric indices, and field-based name matching
 - fixed artwork frame sizing and placement controls for presets, per-axis offsets, and symmetric margins
 - styling controls for borders, rounded corners, layer selection, and overall artwork opacity
+- metadata overlays around the cover: artist on top and title on the left, with truncation, per-character animations, and template-based text sections
 - `none`, `fade`, `flip`, `hinge`, edge-anchored `slide`, and same-edge `cover` transitions with configurable timing and eased motion
 - local caching for remote artwork, including configurable size/count limits and `file://` support
 - player selection/discovery, configurable polling, and optional paused-state visibility
@@ -75,6 +80,79 @@ cargo run --release -- --monitor auto --no-cache
 cargo run --release -- --monitor auto --cache-max-files 64 --cache-max-mb 128
 ```
 
+## Metadata configuration (`~/.config/covermint/config.toml`)
+
+All runtime command-line options are available in config form via `~/.config/covermint/config.toml`.
+
+Rule of thumb:
+- put your defaults in config
+- pass CLI flags when you want one-off overrides
+- CLI always wins over config for the current run
+
+Quick start:
+
+```bash
+covermint --init-config
+# or: cargo run --release -- --init-config
+```
+
+This copies the bundled commented template from:
+
+- `contrib/config/covermint.config.toml`
+
+to:
+
+- `~/.config/covermint/config.toml`
+
+Top-level config keys mirror CLI flags with snake_case names, for example:
+- `monitor`, `player`, `size`, `width`, `height`, `placement`
+- `offset_x`, `offset_y`, `margin`
+- `border_width`, `border_color`, `corner_radius`, `opacity`
+- `transition`, `transition_ms`, `poll_seconds`
+- `show_paused`, `no_cache`, `cache_max_files`, `cache_max_mb`, `layer`
+
+Metadata-specific capabilities:
+- supported template fields: `{{artist}}`, `{{title}}`, `{{album}}`, `{{trackNumber}}`, `{{length}}`
+- line breaks in templates: `\n`
+- template truncation modifiers: `:start`, `:end` (for example `{{title:end}}`)
+- animation directions: `tl-br`, `l-r`, `r-l`, `t-b`, `b-t`, `br-tl`
+
+Example:
+
+```toml
+[metadata]
+enabled = true
+
+[metadata.top]
+enabled = true
+template = "{{artist}} — {{album}}"
+align = "start"
+truncate = "end"
+band_size_px = 40
+
+[metadata.left]
+enabled = true
+template = "{{title:end}}"
+align = "start"
+truncate = "end"
+band_size_px = 34
+
+[metadata.animation]
+mode = "fade"      # none | typewriter | fade
+direction = "tl-br" # tl-br | l-r | r-l | t-b | b-t | br-tl
+duration_ms = 700
+
+[metadata.style]
+font_family = "Inter, Sans"
+font_size_px = 20
+font_weight = 700
+text_color = "rgba(255,255,255,0.94)"
+background_color = "rgba(0,0,0,0.30)"
+padding_px = 8
+```
+
+Top/left sections can be enabled independently; when only one section is enabled, it stays aligned with the cover bounds.
+
 ## CLI reference
 
 This is the authoritative per-flag reference; the earlier sections stay higher level on purpose.
@@ -103,10 +181,14 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 --cache-max-files <n>       Cap the remote artwork cache entry count (default: 128)
 --cache-max-mb <n>          Cap the remote artwork cache size in MiB (default: 256)
 --layer background|bottom   Choose the layer-shell layer (`bottom` is more resilient if your wallpaper tool recreates background surfaces)
+--init-config               Write the bundled example config to ~/.config/covermint/config.toml (fails if file already exists)
 --list-monitors             Print detected monitors and exit
 --list-players              Print detected MPRIS player names and exit
 --help, -h                  Print usage and exit successfully
 ```
+
+All runtime options can be configured via `~/.config/covermint/config.toml`.
+Use `--init-config` to install the starter config there.
 
 `auto` prefers an internal monitor and otherwise falls back to the first detected monitor. `external` prefers the first non-internal monitor and otherwise also falls back to the first detected monitor. If an explicit monitor selector cannot be resolved, Covermint lets the compositor choose and logs that fallback. Use `--list-monitors` to see the connector and model/manufacturer strings that matching can target.
 
@@ -127,7 +209,7 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 - `slide` follows the nearest anchored edge; corners prefer the horizontal edge so right-corner placements get the intended side-swap motion
 - `cover` uses that same edge anchor too, but the incoming artwork slides in solid from that same edge above the fading outgoing artwork
 - deeper 3D transition notes live in `docs/transitions-3d.md`
-- more advanced styling controls are still pending beyond border/radius/opacity polish
+- metadata is currently template/config driven only (no CLI flags yet), and malformed template placeholders are ignored with startup warnings/fallback behavior
 
 ## Troubleshooting
 
