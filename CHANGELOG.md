@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1] — 2026-04-07
+
+### Bug Fixes
+- fix(ci): build `gtk4-layer-shell` from source when `libgtk4-layer-shell-dev` is unavailable on Ubuntu 24.04 runners
+
+### Chores / Other
+- chore: bump crate version to 0.1.1
+
 ## [v0.1.0] — 2026-04-07
 
 ### Features
