@@ -13,6 +13,8 @@ use std::{
 
 const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|hinge|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
 const SPLASH_LOGO: &[u8] = include_bytes!("../assets/branding/covermint-logo-grunge.png");
+const STARTUP_SPLASH_MIN_SHOW: Duration = Duration::from_millis(900);
+const STARTUP_SPLASH_FADE: Duration = Duration::from_millis(220);
 
 #[derive(Clone, Debug)]
 struct Config {
@@ -482,29 +484,31 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let splash_active = Rc::new(RefCell::new(splash_enabled));
     let primary_picture_ref = primary_picture.clone();
     let secondary_picture_ref = secondary_picture.clone();
-    let splash_picture_ref = splash_picture.clone();
     let window_ref = window.clone();
     let config_ref = config.clone();
     let monitor_status_ref = monitor_status.clone();
     let splash_active_ref = splash_active.clone();
 
+    if splash_enabled {
+        schedule_startup_splash_dismissal(&window, &splash_picture, &splash_active, &current_url);
+    }
+
     let refresh = move || {
         sync_window_target(&window_ref, &config_ref, &monitor_status_ref);
 
         let handle_empty_state = || {
-            if *splash_active_ref.borrow() {
-                finish_startup_splash(&splash_picture_ref, &splash_active_ref);
-            }
-
-            clear_artwork_and_hide(
-                &window_ref,
-                &current_url,
+            clear_artwork(
                 &primary_picture_ref,
                 &secondary_picture_ref,
                 &active_slot,
                 &transition_source,
                 &config_ref,
             );
+            *current_url.borrow_mut() = None;
+
+            if !*splash_active_ref.borrow() {
+                window_ref.set_visible(false);
+            }
         };
 
         match query_player(&config_ref.player) {
@@ -539,10 +543,6 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                             return;
                         }
                     }
-                }
-
-                if *splash_active_ref.borrow() {
-                    finish_startup_splash(&splash_picture_ref, &splash_active_ref);
                 }
 
                 window_ref.set_visible(true);
@@ -902,24 +902,57 @@ fn clear_artwork(
     *active_slot.borrow_mut() = ArtworkSlot::Primary;
 }
 
-fn clear_artwork_and_hide(
+fn schedule_startup_splash_dismissal(
     window: &gtk::ApplicationWindow,
+    splash_picture: &gtk::Picture,
+    splash_active: &Rc<RefCell<bool>>,
     current_url: &Rc<RefCell<Option<String>>>,
-    primary: &gtk::Picture,
-    secondary: &gtk::Picture,
-    active_slot: &Rc<RefCell<ArtworkSlot>>,
-    transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
-    config: &Config,
 ) {
-    clear_artwork(primary, secondary, active_slot, transition_source, config);
-    *current_url.borrow_mut() = None;
-    window.set_visible(false);
+    let window = window.clone();
+    let splash_picture = splash_picture.clone();
+    let splash_active = splash_active.clone();
+    let current_url = current_url.clone();
+
+    glib::timeout_add_local_once(STARTUP_SPLASH_MIN_SHOW, move || {
+        dismiss_startup_splash(&window, &splash_picture, &splash_active, &current_url);
+    });
 }
 
-fn finish_startup_splash(splash_picture: &gtk::Picture, splash_active: &Rc<RefCell<bool>>) {
-    splash_picture.set_visible(false);
-    splash_picture.set_opacity(1.0);
-    *splash_active.borrow_mut() = false;
+fn dismiss_startup_splash(
+    window: &gtk::ApplicationWindow,
+    splash_picture: &gtk::Picture,
+    splash_active: &Rc<RefCell<bool>>,
+    current_url: &Rc<RefCell<Option<String>>>,
+) {
+    let mut active = splash_active.borrow_mut();
+    if !*active {
+        return;
+    }
+    *active = false;
+    drop(active);
+
+    let window = window.clone();
+    let splash_picture = splash_picture.clone();
+    let current_url = current_url.clone();
+    let start = Instant::now();
+
+    glib::timeout_add_local(Duration::from_millis(16), move || {
+        let progress = (start.elapsed().as_secs_f64() / STARTUP_SPLASH_FADE.as_secs_f64()).min(1.0);
+        splash_picture.set_opacity(1.0 - ease_in_out_cubic(progress));
+
+        if progress >= 1.0 {
+            splash_picture.set_visible(false);
+            splash_picture.set_opacity(1.0);
+
+            if current_url.borrow().is_none() {
+                window.set_visible(false);
+            }
+
+            return glib::ControlFlow::Break;
+        }
+
+        glib::ControlFlow::Continue
+    });
 }
 
 fn sync_window_target(
@@ -1051,10 +1084,10 @@ fn collect_monitors(display: &gdk::Display) -> Vec<gdk::Monitor> {
     let mut all = Vec::new();
 
     for index in 0..monitors.n_items() {
-        if let Some(item) = monitors.item(index) {
-            if let Ok(monitor) = item.downcast::<gdk::Monitor>() {
-                all.push(monitor);
-            }
+        if let Some(item) = monitors.item(index)
+            && let Ok(monitor) = item.downcast::<gdk::Monitor>()
+        {
+            all.push(monitor);
         }
     }
 
@@ -1136,11 +1169,10 @@ fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
     }
 
     let selector = selector.trim();
-    if let Some(index) = selector
+    if let Ok(index) = selector
         .strip_prefix('#')
         .unwrap_or(selector)
         .parse::<usize>()
-        .ok()
     {
         return all.get(index).cloned();
     }
@@ -1343,27 +1375,27 @@ fn artwork_bytes(url: &str) -> Option<Vec<u8>> {
 }
 
 fn download_texture(url: &str, config: &Config) -> Option<gdk::Texture> {
-    if config.cache_enabled {
-        if let Some(path) = cache_path(url) {
-            if let Ok(bytes) = fs::read(&path) {
-                if let Some(texture) = load_texture(bytes.clone()) {
-                    let _ = fs::write(&path, &bytes);
-                    return Some(texture);
-                }
-                let _ = fs::remove_file(&path);
+    if config.cache_enabled
+        && let Some(path) = cache_path(url)
+    {
+        if let Ok(bytes) = fs::read(&path) {
+            if let Some(texture) = load_texture(bytes.clone()) {
+                let _ = fs::write(&path, &bytes);
+                return Some(texture);
             }
-
-            let bytes = artwork_bytes(url)?;
-            let _ = fs::write(&path, &bytes);
-            if let Some(dir) = path.parent() {
-                trim_cache(
-                    &dir.to_path_buf(),
-                    config.cache_max_files,
-                    config.cache_max_bytes,
-                );
-            }
-            return load_texture(bytes);
+            let _ = fs::remove_file(&path);
         }
+
+        let bytes = artwork_bytes(url)?;
+        let _ = fs::write(&path, &bytes);
+        if let Some(dir) = path.parent() {
+            trim_cache(
+                &dir.to_path_buf(),
+                config.cache_max_files,
+                config.cache_max_bytes,
+            );
+        }
+        return load_texture(bytes);
     }
 
     load_texture(artwork_bytes(url)?)

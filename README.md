@@ -23,7 +23,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - `none`, `fade`, `flip`, and `hinge` transitions with configurable timing and eased motion
 - local caching for remote artwork, including configurable size/count limits and `file://` support
 - player selection/discovery, configurable polling, and optional paused-state visibility
-- a small embedded startup splash using the grungy Covermint logo while the first player/artwork state resolves
+- a small embedded startup splash using the grungy Covermint logo, shown briefly above the first resolved state
 
 For the exact flag surface, use the **CLI reference** below.
 
@@ -113,7 +113,7 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 ## Current limitations
 
 - the app polls instead of reacting to MPRIS signals
-- the startup splash only appears if startup is slow enough to need it, and it exits once the first usable state settles
+- the startup splash is intentionally brief and always yields to artwork after a short fade
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - artwork is scaled to the configured frame size in both directions; tune it with `--size`, `--width`, and `--height`
