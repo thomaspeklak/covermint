@@ -123,6 +123,14 @@ impl PlaybackStatus {
     fn should_show_artwork(self, show_paused: bool) -> bool {
         self == Self::Playing || (show_paused && self == Self::Paused)
     }
+
+    fn auto_select_rank(self) -> u8 {
+        match self {
+            Self::Playing => 2,
+            Self::Paused => 1,
+            Self::NotPlaying => 0,
+        }
+    }
 }
 
 fn main() -> glib::ExitCode {
@@ -1024,7 +1032,7 @@ fn install_styles(config: &Config) {
     let corner_radius = config.corner_radius.max(0);
     let inner_radius = (corner_radius - border_width).max(0);
     let css = format!(
-        ".covermint-window {{ background-color: transparent; box-shadow: none; border-radius: {corner_radius}px; overflow: hidden; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; overflow: hidden; }}\n.covermint-artwork-stage {{ background-color: transparent; box-shadow: none; border-radius: {inner_radius}px; overflow: hidden; }}",
+        ".covermint-window {{ background-color: transparent; box-shadow: none; border-radius: {corner_radius}px; }}\n.covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; }}\n.covermint-artwork-stage {{ background-color: transparent; box-shadow: none; border-radius: {inner_radius}px; }}",
         config.border_color
     );
     provider.load_from_data(&css);
@@ -1078,11 +1086,27 @@ fn list_monitors() {
     }
 }
 
+fn player_names() -> Vec<String> {
+    run_command("playerctl", &["-l"])
+        .map(|players| {
+            players
+                .lines()
+                .map(str::trim)
+                .filter(|player| !player.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn list_players() {
-    match run_command("playerctl", &["-l"]) {
-        Some(players) if !players.is_empty() => println!("{players}"),
-        _ => eprintln!("covermint: no MPRIS players reported by playerctl"),
+    let players = player_names();
+    if players.is_empty() {
+        eprintln!("covermint: no MPRIS players reported by playerctl");
+        return;
     }
+
+    println!("{}", players.join("\n"));
 }
 
 fn select_monitor(selector: &str) -> Option<gdk::Monitor> {
@@ -1180,7 +1204,7 @@ fn monitor_label(monitor: &gdk::Monitor) -> String {
     }
 }
 
-fn query_player(player: &str) -> Option<MediaState> {
+fn query_named_player(player: &str) -> Option<MediaState> {
     let status = run_playerctl(player, &["status"])?;
     let status = match status.trim() {
         "Playing" => PlaybackStatus::Playing,
@@ -1193,6 +1217,33 @@ fn query_player(player: &str) -> Option<MediaState> {
         .filter(|value| !value.is_empty());
 
     Some(MediaState { status, art_url })
+}
+
+fn query_player(player: &str) -> Option<MediaState> {
+    if !player.eq_ignore_ascii_case("auto") {
+        return query_named_player(player);
+    }
+
+    let mut best_match = None;
+
+    for player_name in player_names() {
+        let Some(state) = query_named_player(&player_name) else {
+            continue;
+        };
+        let score = (state.status.auto_select_rank(), state.art_url.is_some());
+
+        if best_match
+            .as_ref()
+            .map(|(best_score, _): &((u8, bool), MediaState)| score > *best_score)
+            .unwrap_or(true)
+        {
+            best_match = Some((score, state));
+        }
+    }
+
+    best_match
+        .map(|(_, state)| state)
+        .or_else(|| query_named_player(player))
 }
 
 fn run_command(program: &str, args: &[&str]) -> Option<String> {

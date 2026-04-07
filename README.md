@@ -80,7 +80,7 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 ```text
 --monitor auto|internal|external|<index>|#<index>|<name>
                            Pick a monitor by alias, list index (0 or #0), connector, manufacturer, or model substring
---player auto|<name>        MPRIS player name passed to playerctl; auto uses the active/default player
+--player auto|<name>        MPRIS player name passed to playerctl; auto prefers playing players and then players with artwork
 --size <px>                 Shorthand for setting both --width and --height
 --width <px>                Artwork width in pixels
 --height <px>               Artwork height in pixels
@@ -117,7 +117,7 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - artwork is scaled to the configured frame size in both directions; tune it with `--size`, `--width`, and `--height`
-- automatic player selection depends on `playerctl`'s active/default player behavior
+- automatic player selection now prefers playing players and then players with artwork, but it still depends on what `playerctl -l` can discover
 - paused artwork stays hidden unless `--show-paused` is enabled
 - the cache is local-only and bounded by simple LRU-style file-count and size limits when enabled
 - only `http`, `https`, and `file` artwork URLs are supported right now
