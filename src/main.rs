@@ -112,13 +112,6 @@ struct MediaState {
     art_url: Option<String>,
 }
 
-#[derive(Debug)]
-struct StartupSplash {
-    started_at: Instant,
-    visible_since: Option<Instant>,
-    active: bool,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlaybackStatus {
     Playing,
@@ -129,45 +122,6 @@ enum PlaybackStatus {
 impl PlaybackStatus {
     fn should_show_artwork(self, show_paused: bool) -> bool {
         self == Self::Playing || (show_paused && self == Self::Paused)
-    }
-}
-
-impl StartupSplash {
-    const REVEAL_DELAY: Duration = Duration::from_millis(250);
-    const MIN_SHOW: Duration = Duration::from_millis(900);
-    const MAX_SHOW: Duration = Duration::from_secs(3);
-
-    fn new(active: bool) -> Self {
-        Self {
-            started_at: Instant::now(),
-            visible_since: None,
-            active,
-        }
-    }
-
-    fn should_reveal(&self) -> bool {
-        self.active
-            && self.visible_since.is_none()
-            && self.started_at.elapsed() >= Self::REVEAL_DELAY
-    }
-
-    fn can_finish(&self) -> bool {
-        self.visible_since
-            .map(|shown_at| shown_at.elapsed() >= Self::MIN_SHOW)
-            .unwrap_or(true)
-    }
-
-    fn expired(&self) -> bool {
-        self.active && self.started_at.elapsed() >= Self::MAX_SHOW
-    }
-
-    fn reveal(&mut self) {
-        self.visible_since = Some(Instant::now());
-    }
-
-    fn finish(&mut self) {
-        self.active = false;
-        self.visible_since = None;
     }
 }
 
@@ -480,6 +434,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let splash_enabled = if let Some(texture) = load_texture(SPLASH_LOGO.to_vec()) {
         splash_picture.set_paintable(Some(&texture));
+        splash_picture.set_visible(true);
         true
     } else {
         eprintln!("covermint: failed to load embedded splash logo");
@@ -511,41 +466,26 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     window.set_child(Some(&frame));
     window.present();
-    window.set_visible(false);
+    window.set_visible(splash_enabled);
 
     let current_url = Rc::new(RefCell::new(None::<String>));
     let active_slot = Rc::new(RefCell::new(ArtworkSlot::Primary));
     let transition_source = Rc::new(RefCell::new(None::<glib::SourceId>));
-    let splash_state = Rc::new(RefCell::new(StartupSplash::new(splash_enabled)));
+    let splash_active = Rc::new(RefCell::new(splash_enabled));
     let primary_picture_ref = primary_picture.clone();
     let secondary_picture_ref = secondary_picture.clone();
     let splash_picture_ref = splash_picture.clone();
     let window_ref = window.clone();
     let config_ref = config.clone();
     let monitor_status_ref = monitor_status.clone();
-    let splash_state_ref = splash_state.clone();
+    let splash_active_ref = splash_active.clone();
 
     let refresh = move || {
         sync_window_target(&window_ref, &config_ref, &monitor_status_ref);
-        reveal_startup_splash(&window_ref, &splash_picture_ref, &splash_state_ref);
 
         let handle_empty_state = || {
-            let (splash_active, splash_visible, splash_expired) = {
-                let splash = splash_state_ref.borrow();
-                (
-                    splash.active,
-                    splash.visible_since.is_some(),
-                    splash.expired(),
-                )
-            };
-
-            if splash_expired {
-                finish_startup_splash(&splash_picture_ref, &splash_state_ref);
-            }
-
-            if splash_active && splash_visible && !splash_expired {
-                window_ref.set_visible(true);
-                return;
+            if *splash_active_ref.borrow() {
+                finish_startup_splash(&splash_picture_ref, &splash_active_ref);
             }
 
             clear_artwork_and_hide(
@@ -593,22 +533,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                     }
                 }
 
-                let (splash_active, splash_visible, splash_can_finish) = {
-                    let splash = splash_state_ref.borrow();
-                    (
-                        splash.active,
-                        splash.visible_since.is_some(),
-                        splash.can_finish(),
-                    )
-                };
-
-                if splash_active {
-                    if !splash_visible || splash_can_finish {
-                        finish_startup_splash(&splash_picture_ref, &splash_state_ref);
-                    } else {
-                        window_ref.set_visible(true);
-                        return;
-                    }
+                if *splash_active_ref.borrow() {
+                    finish_startup_splash(&splash_picture_ref, &splash_active_ref);
                 }
 
                 window_ref.set_visible(true);
@@ -617,7 +543,10 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         }
     };
 
-    refresh();
+    let initial_refresh = refresh.clone();
+    glib::idle_add_local_once(move || {
+        initial_refresh();
+    });
 
     glib::timeout_add_seconds_local(config.poll_seconds, move || {
         refresh();
@@ -979,26 +908,10 @@ fn clear_artwork_and_hide(
     window.set_visible(false);
 }
 
-fn reveal_startup_splash(
-    window: &gtk::ApplicationWindow,
-    splash_picture: &gtk::Picture,
-    splash_state: &Rc<RefCell<StartupSplash>>,
-) {
-    let mut splash_state = splash_state.borrow_mut();
-    if !splash_state.should_reveal() {
-        return;
-    }
-
-    splash_picture.set_opacity(1.0);
-    splash_picture.set_visible(true);
-    window.set_visible(true);
-    splash_state.reveal();
-}
-
-fn finish_startup_splash(splash_picture: &gtk::Picture, splash_state: &Rc<RefCell<StartupSplash>>) {
+fn finish_startup_splash(splash_picture: &gtk::Picture, splash_active: &Rc<RefCell<bool>>) {
     splash_picture.set_visible(false);
     splash_picture.set_opacity(1.0);
-    splash_state.borrow_mut().finish();
+    *splash_active.borrow_mut() = false;
 }
 
 fn sync_window_target(
