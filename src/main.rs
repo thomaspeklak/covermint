@@ -49,7 +49,7 @@ enum StartupAction {
     InitConfig,
     ListMonitors,
     ListPlayers,
-    Run(Config),
+    Run(Box<Config>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -540,7 +540,7 @@ fn main() -> glib::ExitCode {
                 return;
             }
 
-            build_ui(app, Rc::new(config.clone()));
+            build_ui(app, Rc::new((**config).clone()));
         }
     });
 
@@ -669,7 +669,7 @@ impl StartupAction {
         }
 
         config.validate()?;
-        Ok(Self::Run(config))
+        Ok(Self::Run(Box::new(config)))
     }
 }
 
