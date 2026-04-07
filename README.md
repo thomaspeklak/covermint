@@ -20,7 +20,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - flexible monitor targeting and discovery, including `auto`, `internal`, `external`, numeric indices, and field-based name matching
 - fixed artwork frame sizing and placement controls for presets, per-axis offsets, and symmetric margins
 - styling controls for borders, rounded corners, layer selection, and overall artwork opacity
-- `none`, `fade`, `flip`, and `hinge` transitions with configurable timing and eased motion
+- `none`, `fade`, `flip`, `hinge`, and edge-anchored `slide` transitions with configurable timing and eased motion
 - local caching for remote artwork, including configurable size/count limits and `file://` support
 - player selection/discovery, configurable polling, and optional paused-state visibility
 - a small embedded startup splash using the grungy Covermint logo, centered at about two thirds of the artwork frame and shown briefly above the first resolved state
@@ -66,6 +66,7 @@ cargo run --release -- --monitor auto --border-width 2 --border-color 'rgba(255,
 cargo run --release -- --monitor auto --transition fade --transition-ms 220
 cargo run --release -- --monitor auto --transition flip --transition-ms 220
 cargo run --release -- --monitor auto --transition hinge --transition-ms 260
+cargo run --release -- --monitor auto --placement bottom-right --transition slide --transition-ms 240
 cargo run --release -- --monitor auto --player vlc --poll-seconds 2
 cargo run --release -- --monitor auto --player auto
 cargo run --release -- --monitor auto --show-paused
@@ -93,7 +94,7 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 --border-color <css-color>  Border color, including alpha-capable values like rgba(...)
 --corner-radius <px>        Corner radius in pixels
 --opacity <0.0-1.0>         Overall artwork opacity
---transition none|fade|flip|hinge Artwork transition style
+--transition none|fade|flip|hinge|slide Artwork transition style (`slide` requires an edge-adjacent placement, so `center` is rejected)
 --transition-ms <n>         Transition duration in milliseconds
 --poll-seconds <n>          Refresh interval
 --show-paused               Keep the last artwork visible while playback is paused
@@ -122,6 +123,7 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 - the cache is local-only and bounded by simple LRU-style file-count and size limits when enabled
 - only `http`, `https`, and `file` artwork URLs are supported right now
 - `flip` and `hinge` are GTK-friendly pseudo-3D transitions rather than true compositor/GL transforms
+- `slide` follows the nearest anchored edge; corners prefer the horizontal edge so right-corner placements get the intended side-swap motion
 - deeper 3D transition notes live in `docs/transitions-3d.md`
 - more advanced styling controls are still pending beyond border/radius/opacity polish
 

@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|hinge|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
+const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|hinge|slide|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--list-monitors] [--list-players] [--help]";
 const SPLASH_LOGO: &[u8] = include_bytes!("../assets/branding/covermint-logo-grunge.png");
 const STARTUP_SPLASH_MIN_SHOW: Duration = Duration::from_millis(900);
 const STARTUP_SPLASH_FADE: Duration = Duration::from_millis(220);
@@ -91,6 +91,7 @@ enum Transition {
     Fade,
     Flip,
     Hinge,
+    Slide,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,6 +107,12 @@ impl ArtworkSlot {
             Self::Secondary => Self::Primary,
         }
     }
+}
+
+#[derive(Clone)]
+struct ArtworkLayer {
+    stage: gtk::Fixed,
+    picture: gtk::Picture,
 }
 
 #[derive(Debug)]
@@ -288,7 +295,21 @@ impl StartupAction {
             return Ok(Self::ListPlayers);
         }
 
+        config.validate()?;
         Ok(Self::Run(config))
+    }
+}
+
+impl Config {
+    fn validate(&self) -> Result<(), String> {
+        if self.transition == Transition::Slide && !self.placement.supports_slide_transition() {
+            return Err(format!(
+                "--transition slide requires a placement adjacent to a screen edge, got '{}'",
+                self.placement.label()
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -299,8 +320,9 @@ impl Transition {
             "fade" => Ok(Self::Fade),
             "flip" => Ok(Self::Flip),
             "hinge" => Ok(Self::Hinge),
+            "slide" => Ok(Self::Slide),
             other => Err(format!(
-                "unsupported --transition value '{other}', expected one of: none, fade, flip, hinge"
+                "unsupported --transition value '{other}', expected one of: none, fade, flip, hinge, slide"
             )),
         }
     }
@@ -361,6 +383,20 @@ impl Placement {
             Self::BottomLeft => Some((Edge::Left, Edge::Bottom)),
             Self::BottomRight => Some((Edge::Right, Edge::Bottom)),
             Self::Top | Self::Left | Self::Center | Self::Right | Self::Bottom => None,
+        }
+    }
+
+    fn supports_slide_transition(self) -> bool {
+        self.slide_direction().is_some()
+    }
+
+    fn slide_direction(self) -> Option<(f64, f64)> {
+        match self {
+            Self::TopLeft | Self::Left | Self::BottomLeft => Some((-1.0, 0.0)),
+            Self::TopRight | Self::Right | Self::BottomRight => Some((1.0, 0.0)),
+            Self::Top => Some((0.0, -1.0)),
+            Self::Bottom => Some((0.0, 1.0)),
+            Self::Center => None,
         }
     }
 }
@@ -437,10 +473,10 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     sync_window_target(&window, &config, &monitor_status);
     install_styles(&config);
 
-    let primary_picture = new_artwork_picture(&config);
-    let secondary_picture = new_artwork_picture(&config);
+    let primary_artwork = new_artwork_layer(&config);
+    let secondary_artwork = new_artwork_layer(&config);
     let splash_picture = new_splash_picture(&config);
-    secondary_picture.set_opacity(0.0);
+    secondary_artwork.picture.set_opacity(0.0);
 
     let splash_enabled = if let Some(texture) = load_texture(SPLASH_LOGO.to_vec()) {
         splash_picture.set_paintable(Some(&texture));
@@ -455,8 +491,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     overlay.set_size_request(config.width, config.height);
     overlay.set_halign(gtk::Align::Fill);
     overlay.set_valign(gtk::Align::Fill);
-    overlay.set_child(Some(&primary_picture));
-    overlay.add_overlay(&secondary_picture);
+    overlay.set_child(Some(&primary_artwork.stage));
+    overlay.add_overlay(&secondary_artwork.stage);
     overlay.add_overlay(&splash_picture);
 
     let artwork_stage = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -482,8 +518,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let active_slot = Rc::new(RefCell::new(ArtworkSlot::Primary));
     let transition_source = Rc::new(RefCell::new(None::<glib::SourceId>));
     let splash_active = Rc::new(RefCell::new(splash_enabled));
-    let primary_picture_ref = primary_picture.clone();
-    let secondary_picture_ref = secondary_picture.clone();
+    let primary_artwork_ref = primary_artwork.clone();
+    let secondary_artwork_ref = secondary_artwork.clone();
     let window_ref = window.clone();
     let config_ref = config.clone();
     let monitor_status_ref = monitor_status.clone();
@@ -498,8 +534,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
         let handle_empty_state = || {
             clear_artwork(
-                &primary_picture_ref,
-                &secondary_picture_ref,
+                &primary_artwork_ref,
+                &secondary_artwork_ref,
                 &active_slot,
                 &transition_source,
                 &config_ref,
@@ -527,8 +563,8 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                         Some(texture) => {
                             let has_existing_art = current_url.borrow().is_some();
                             set_artwork_texture(
-                                &primary_picture_ref,
-                                &secondary_picture_ref,
+                                &primary_artwork_ref,
+                                &secondary_artwork_ref,
                                 &active_slot,
                                 &transition_source,
                                 &config_ref,
@@ -561,6 +597,17 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         refresh();
         glib::ControlFlow::Continue
     });
+}
+
+fn new_artwork_layer(config: &Config) -> ArtworkLayer {
+    let picture = new_artwork_picture(config);
+    let stage = gtk::Fixed::new();
+    stage.set_size_request(config.width, config.height);
+    stage.set_halign(gtk::Align::Fill);
+    stage.set_valign(gtk::Align::Fill);
+    stage.put(&picture, 0.0, 0.0);
+
+    ArtworkLayer { stage, picture }
 }
 
 fn new_artwork_picture(config: &Config) -> gtk::Picture {
@@ -600,11 +647,11 @@ fn run_playerctl<'a>(player: &'a str, args: &[&'a str]) -> Option<String> {
     run_command("playerctl", &command_args)
 }
 
-fn active_picture_pair(
-    primary: &gtk::Picture,
-    secondary: &gtk::Picture,
+fn active_artwork_pair(
+    primary: &ArtworkLayer,
+    secondary: &ArtworkLayer,
     slot: ArtworkSlot,
-) -> (gtk::Picture, gtk::Picture) {
+) -> (ArtworkLayer, ArtworkLayer) {
     match slot {
         ArtworkSlot::Primary => (primary.clone(), secondary.clone()),
         ArtworkSlot::Secondary => (secondary.clone(), primary.clone()),
@@ -621,16 +668,14 @@ fn stop_transition(transition_source: &Rc<RefCell<Option<glib::SourceId>>>) {
 struct TransitionFrame {
     width_progress: f64,
     height_progress: f64,
+    offset_x: f64,
+    offset_y: f64,
     opacity: f64,
 }
 
-fn reset_picture_size(picture: &gtk::Picture, width: i32, height: i32) {
-    picture.set_size_request(width, height);
-}
-
-fn reset_picture_layout(picture: &gtk::Picture) {
-    picture.set_halign(gtk::Align::Fill);
-    picture.set_valign(gtk::Align::Fill);
+fn reset_artwork_frame(artwork: &ArtworkLayer, width: i32, height: i32) {
+    artwork.picture.set_size_request(width, height);
+    artwork.stage.move_(&artwork.picture, 0.0, 0.0);
 }
 
 fn artwork_window_size(config: &Config) -> (i32, i32) {
@@ -659,35 +704,46 @@ fn scaled_frame_size(size: i32, progress: f64, max_progress: f64) -> i32 {
 }
 
 fn render_picture_frame(
-    picture: &gtk::Picture,
+    artwork: &ArtworkLayer,
     width: i32,
     height: i32,
     transition: Transition,
     frame: TransitionFrame,
 ) {
-    let (frame_width, frame_height, halign, valign) = match transition {
-        Transition::None | Transition::Fade => (width, height, gtk::Align::Fill, gtk::Align::Fill),
-        Transition::Flip => (
-            scaled_frame_size(width, frame.width_progress, 1.08),
+    let (frame_width, frame_height, x, y) = match transition {
+        Transition::None | Transition::Fade => (width, height, 0.0, 0.0),
+        Transition::Flip => {
+            let frame_width = scaled_frame_size(width, frame.width_progress, 1.08);
+            (frame_width, height, ((width - frame_width) / 2) as f64, 0.0)
+        }
+        Transition::Hinge => {
+            let frame_width = scaled_frame_size(width, frame.width_progress, 1.04);
+            let frame_height = scaled_frame_size(height, frame.height_progress, 1.04);
+            (
+                frame_width,
+                frame_height,
+                ((width - frame_width) / 2) as f64,
+                0.0,
+            )
+        }
+        Transition::Slide => (
+            width,
             height,
-            gtk::Align::Center,
-            gtk::Align::Center,
-        ),
-        Transition::Hinge => (
-            scaled_frame_size(width, frame.width_progress, 1.04),
-            scaled_frame_size(height, frame.height_progress, 1.04),
-            gtk::Align::Center,
-            gtk::Align::Start,
+            (width as f64 * frame.offset_x).round(),
+            (height as f64 * frame.offset_y).round(),
         ),
     };
 
-    picture.set_halign(halign);
-    picture.set_valign(valign);
-    picture.set_size_request(frame_width, frame_height);
-    picture.set_opacity(frame.opacity.clamp(0.0, 1.0));
+    artwork.picture.set_size_request(frame_width, frame_height);
+    artwork.stage.move_(&artwork.picture, x, y);
+    artwork.picture.set_opacity(frame.opacity.clamp(0.0, 1.0));
 }
 
-fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame, TransitionFrame) {
+fn transition_frames(
+    transition: Transition,
+    placement: Placement,
+    progress: f64,
+) -> (TransitionFrame, TransitionFrame) {
     let t = progress.clamp(0.0, 1.0);
 
     match transition {
@@ -695,11 +751,15 @@ fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame,
             TransitionFrame {
                 width_progress: 1.0,
                 height_progress: 1.0,
+                offset_x: 0.0,
+                offset_y: 0.0,
                 opacity: 0.0,
             },
             TransitionFrame {
                 width_progress: 1.0,
                 height_progress: 1.0,
+                offset_x: 0.0,
+                offset_y: 0.0,
                 opacity: 1.0,
             },
         ),
@@ -709,11 +769,15 @@ fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame,
                 TransitionFrame {
                     width_progress: 1.0,
                     height_progress: 1.0,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
                     opacity: 1.0 - eased,
                 },
                 TransitionFrame {
                     width_progress: 1.0,
                     height_progress: 1.0,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
                     opacity: eased,
                 },
             )
@@ -725,11 +789,15 @@ fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame,
                     TransitionFrame {
                         width_progress: 1.0 - phase,
                         height_progress: 1.0,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: 1.0 - (phase * 0.85),
                     },
                     TransitionFrame {
                         width_progress: 0.0,
                         height_progress: 1.0,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: 0.0,
                     },
                 )
@@ -739,11 +807,15 @@ fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame,
                     TransitionFrame {
                         width_progress: 0.0,
                         height_progress: 1.0,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: 0.0,
                     },
                     TransitionFrame {
                         width_progress: ease_out_back_subtle(phase),
                         height_progress: 1.0,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: ease_in_out_cubic(phase),
                     },
                 )
@@ -756,11 +828,15 @@ fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame,
                     TransitionFrame {
                         width_progress: 1.0 - (phase * 0.72),
                         height_progress: 1.0 - (phase * 0.16),
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: 1.0 - (phase * 0.9),
                     },
                     TransitionFrame {
                         width_progress: 0.28,
                         height_progress: 0.84,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: 0.0,
                     },
                 )
@@ -771,44 +847,68 @@ fn transition_frames(transition: Transition, progress: f64) -> (TransitionFrame,
                     TransitionFrame {
                         width_progress: 0.28,
                         height_progress: 0.84,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: 0.0,
                     },
                     TransitionFrame {
                         width_progress: 0.28 + (spring * 0.72),
                         height_progress: 0.84 + (spring * 0.16),
+                        offset_x: 0.0,
+                        offset_y: 0.0,
                         opacity: ease_in_out_cubic(phase),
                     },
                 )
             }
         }
+        Transition::Slide => {
+            let eased = ease_in_out_cubic(t);
+            let (direction_x, direction_y) = placement
+                .slide_direction()
+                .expect("validated slide transition placement");
+            (
+                TransitionFrame {
+                    width_progress: 1.0,
+                    height_progress: 1.0,
+                    offset_x: direction_x * eased,
+                    offset_y: direction_y * eased,
+                    opacity: 1.0 - eased,
+                },
+                TransitionFrame {
+                    width_progress: 1.0,
+                    height_progress: 1.0,
+                    offset_x: -direction_x * (1.0 - eased),
+                    offset_y: -direction_y * (1.0 - eased),
+                    opacity: 1.0,
+                },
+            )
+        }
     }
 }
 
-fn clear_picture(picture: &gtk::Picture, width: i32, height: i32) {
-    picture.set_paintable(Option::<&gdk::Texture>::None);
-    picture.set_opacity(0.0);
-    reset_picture_size(picture, width, height);
-    reset_picture_layout(picture);
+fn clear_picture(artwork: &ArtworkLayer, width: i32, height: i32) {
+    artwork.picture.set_paintable(Option::<&gdk::Texture>::None);
+    artwork.picture.set_opacity(0.0);
+    reset_artwork_frame(artwork, width, height);
 }
 
 fn set_artwork_texture_immediate(
-    primary: &gtk::Picture,
-    secondary: &gtk::Picture,
+    primary: &ArtworkLayer,
+    secondary: &ArtworkLayer,
     active_slot: ArtworkSlot,
     config: &Config,
     texture: &gdk::Texture,
 ) {
-    let (active_picture, inactive_picture) = active_picture_pair(primary, secondary, active_slot);
-    reset_picture_size(&active_picture, config.width, config.height);
-    reset_picture_layout(&active_picture);
-    active_picture.set_paintable(Some(texture));
-    active_picture.set_opacity(1.0);
-    clear_picture(&inactive_picture, config.width, config.height);
+    let (active_artwork, inactive_artwork) = active_artwork_pair(primary, secondary, active_slot);
+    reset_artwork_frame(&active_artwork, config.width, config.height);
+    active_artwork.picture.set_paintable(Some(texture));
+    active_artwork.picture.set_opacity(1.0);
+    clear_picture(&inactive_artwork, config.width, config.height);
 }
 
 fn animate_artwork_transition(
-    primary: &gtk::Picture,
-    secondary: &gtk::Picture,
+    primary: &ArtworkLayer,
+    secondary: &ArtworkLayer,
     active_slot: &Rc<RefCell<ArtworkSlot>>,
     transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
     config: &Config,
@@ -816,19 +916,19 @@ fn animate_artwork_transition(
 ) {
     let current_slot = *active_slot.borrow();
     let next_slot = current_slot.other();
-    let (from_picture, to_picture) = active_picture_pair(primary, secondary, current_slot);
+    let (from_artwork, to_artwork) = active_artwork_pair(primary, secondary, current_slot);
 
-    to_picture.set_paintable(Some(texture));
-    let (from_start, to_start) = transition_frames(config.transition, 0.0);
+    to_artwork.picture.set_paintable(Some(texture));
+    let (from_start, to_start) = transition_frames(config.transition, config.placement, 0.0);
     render_picture_frame(
-        &from_picture,
+        &from_artwork,
         config.width,
         config.height,
         config.transition,
         from_start,
     );
     render_picture_frame(
-        &to_picture,
+        &to_artwork,
         config.width,
         config.height,
         config.transition,
@@ -842,18 +942,18 @@ fn animate_artwork_transition(
     let transition = config.transition;
     let width = config.width;
     let height = config.height;
+    let placement = config.placement;
 
     let source_id = glib::timeout_add_local(Duration::from_millis(16), move || {
         let progress = (start.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
-        let (from_frame, to_frame) = transition_frames(transition, progress);
-        render_picture_frame(&from_picture, width, height, transition, from_frame);
-        render_picture_frame(&to_picture, width, height, transition, to_frame);
+        let (from_frame, to_frame) = transition_frames(transition, placement, progress);
+        render_picture_frame(&from_artwork, width, height, transition, from_frame);
+        render_picture_frame(&to_artwork, width, height, transition, to_frame);
 
         if progress >= 1.0 {
-            clear_picture(&from_picture, width, height);
-            reset_picture_size(&to_picture, width, height);
-            reset_picture_layout(&to_picture);
-            to_picture.set_opacity(1.0);
+            clear_picture(&from_artwork, width, height);
+            reset_artwork_frame(&to_artwork, width, height);
+            to_artwork.picture.set_opacity(1.0);
             *active_slot.borrow_mut() = next_slot;
             *transition_source_for_closure.borrow_mut() = None;
             return glib::ControlFlow::Break;
@@ -866,8 +966,8 @@ fn animate_artwork_transition(
 }
 
 fn set_artwork_texture(
-    primary: &gtk::Picture,
-    secondary: &gtk::Picture,
+    primary: &ArtworkLayer,
+    secondary: &ArtworkLayer,
     active_slot: &Rc<RefCell<ArtworkSlot>>,
     transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
     config: &Config,
@@ -892,8 +992,8 @@ fn set_artwork_texture(
 }
 
 fn clear_artwork(
-    primary: &gtk::Picture,
-    secondary: &gtk::Picture,
+    primary: &ArtworkLayer,
+    secondary: &ArtworkLayer,
     active_slot: &Rc<RefCell<ArtworkSlot>>,
     transition_source: &Rc<RefCell<Option<glib::SourceId>>>,
     config: &Config,
@@ -902,7 +1002,7 @@ fn clear_artwork(
 
     clear_picture(primary, config.width, config.height);
     clear_picture(secondary, config.width, config.height);
-    primary.set_opacity(1.0);
+    primary.picture.set_opacity(1.0);
     *active_slot.borrow_mut() = ArtworkSlot::Primary;
 }
 
