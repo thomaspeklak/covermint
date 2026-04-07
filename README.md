@@ -23,7 +23,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - `none`, `fade`, `flip`, and `hinge` transitions with configurable timing and eased motion
 - local caching for remote artwork, including configurable size/count limits and `file://` support
 - player selection/discovery, configurable polling, and optional paused-state visibility
-- a small embedded startup splash using the grungy Covermint logo, shown briefly above the first resolved state
+- a small embedded startup splash using the grungy Covermint logo, centered at about two thirds of the artwork frame and shown briefly above the first resolved state
 
 For the exact flag surface, use the **CLI reference** below.
 
@@ -124,6 +124,27 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 - `flip` and `hinge` are GTK-friendly pseudo-3D transitions rather than true compositor/GL transforms
 - deeper 3D transition notes live in `docs/transitions-3d.md`
 - more advanced styling controls are still pending beyond border/radius/opacity polish
+
+## Troubleshooting
+
+### Mesa / Intel renderer warnings
+
+If you see warnings like these on stderr:
+
+```text
+MESA-INTEL: warning: ... support more multi-planar formats with DRM modifiers
+MESA-INTEL: warning: ... support YUV colorspace with DRM format modifiers
+```
+
+those are emitted by the Mesa Intel graphics stack rather than by Covermint itself. If the artwork still renders correctly, they are usually harmless.
+
+If you want to try a different GTK renderer path, run Covermint with one of these environment overrides:
+
+```bash
+GSK_RENDERER=ngl cargo run --release -- --monitor auto --layer background
+# or, on setups where `ngl` is not available:
+GSK_RENDERER=gl cargo run --release -- --monitor auto --layer background
+```
 
 ## Running as a user service
 
