@@ -26,6 +26,12 @@ width = 420
 # --height <px>
 height = 420
 
+# Artwork fit mode inside the configured frame:
+#   contain -> keep full image, may leave empty bars
+#   cover   -> fill frame by cropping overflow (default)
+#   fill    -> stretch image to fill frame (distorts)
+artwork_fit = "cover"
+
 # --placement top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right
 # also supports aliases like tl, tr, cl, cr, bl, br, middle
 placement = "bottom-right"

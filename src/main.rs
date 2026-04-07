@@ -25,6 +25,7 @@ struct Config {
     player: String,
     width: i32,
     height: i32,
+    artwork_fit: ArtworkFit,
     placement: Placement,
     offset_x: i32,
     offset_y: i32,
@@ -58,6 +59,13 @@ enum ShellLayer {
     Bottom,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ArtworkFit {
+    Contain,
+    Cover,
+    Fill,
+}
+
 impl ShellLayer {
     fn parse(value: &str) -> Result<Self, String> {
         match value {
@@ -66,6 +74,27 @@ impl ShellLayer {
             other => Err(format!(
                 "unsupported --layer value '{other}', expected background or bottom"
             )),
+        }
+    }
+}
+
+impl ArtworkFit {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "contain" => Ok(Self::Contain),
+            "cover" => Ok(Self::Cover),
+            "fill" => Ok(Self::Fill),
+            other => Err(format!(
+                "unsupported artwork_fit value '{other}', expected contain, cover, or fill"
+            )),
+        }
+    }
+
+    fn as_content_fit(self) -> gtk::ContentFit {
+        match self {
+            Self::Contain => gtk::ContentFit::Contain,
+            Self::Cover => gtk::ContentFit::Cover,
+            Self::Fill => gtk::ContentFit::Fill,
         }
     }
 }
@@ -268,6 +297,7 @@ struct FileConfig {
     size: Option<i32>,
     width: Option<i32>,
     height: Option<i32>,
+    artwork_fit: Option<String>,
     placement: Option<String>,
     offset_x: Option<i32>,
     offset_y: Option<i32>,
@@ -411,13 +441,6 @@ impl SectionAlign {
             )),
         }
     }
-
-    fn as_halign(self) -> gtk::Align {
-        match self {
-            Self::Start => gtk::Align::Start,
-            Self::End => gtk::Align::End,
-        }
-    }
 }
 
 impl TruncateMode {
@@ -554,6 +577,7 @@ impl Default for Config {
             player: "auto".to_string(),
             width: 420,
             height: 420,
+            artwork_fit: ArtworkFit::Cover,
             placement: Placement::BottomRight,
             offset_x: 48,
             offset_y: 48,
@@ -893,6 +917,9 @@ fn load_external_config(config: &mut Config) -> Result<(), String> {
     if let Some(height) = file.height {
         config.height = height;
     }
+    if let Some(artwork_fit) = file.artwork_fit.as_ref() {
+        config.artwork_fit = ArtworkFit::parse(artwork_fit)?;
+    }
     if let Some(placement) = file.placement.as_ref() {
         config.placement = Placement::parse(placement)?;
     }
@@ -1189,8 +1216,9 @@ fn new_metadata_label(
             wrapper.set_halign(gtk::Align::Fill);
             wrapper.set_valign(gtk::Align::Fill);
             wrapper.set_hexpand(true);
+            wrapper.set_overflow(gtk::Overflow::Hidden);
 
-            label.set_halign(section.align.as_halign());
+            label.set_halign(gtk::Align::Fill);
             label.set_valign(gtk::Align::Center);
             label.set_hexpand(true);
             wrapper.append(&label);
@@ -1885,7 +1913,7 @@ fn new_artwork_picture(config: &Config) -> gtk::Picture {
     let picture = gtk::Picture::new();
     picture.set_size_request(config.width, config.height);
     picture.set_can_shrink(true);
-    picture.set_content_fit(gtk::ContentFit::Contain);
+    picture.set_content_fit(config.artwork_fit.as_content_fit());
     picture.set_hexpand(true);
     picture.set_vexpand(true);
     picture.set_halign(gtk::Align::Fill);
@@ -2510,24 +2538,24 @@ fn install_styles(config: &Config) {
         ".covermint-window {{ background-color: transparent; box-shadow: none; border-radius: {corner_radius}px; }}\n\
          .covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; }}\n\
          .covermint-artwork-stage {{ background-color: transparent; box-shadow: none; border-radius: {inner_radius}px; }}\n\
-         .covermint-meta-top {{ background-color: {}; min-height: {}px; padding: {}px; }}\n\
-         .covermint-meta-left {{ background-color: {}; min-width: {}px; padding: {}px; }}\n\
+         .covermint-meta-top {{ background-color: transparent; min-height: {}px; }}\n\
+         .covermint-meta-left {{ background-color: transparent; min-width: {}px; }}\n\
          .covermint-meta-corner {{ background-color: {}; }}\n\
-         .covermint-meta-top .covermint-meta-label {{ color: {}; font-family: '{}'; font-size: {}px; font-weight: {}; }}\n\
-         .covermint-meta-left .covermint-meta-label {{ color: {}; font-family: '{}'; font-size: {}px; font-weight: {}; }}",
+         .covermint-meta-top .covermint-meta-label {{ color: {}; background-color: {}; padding: {}px; font-family: '{}'; font-size: {}px; font-weight: {}; }}\n\
+         .covermint-meta-left .covermint-meta-label {{ color: {}; background-color: {}; padding: {}px; font-family: '{}'; font-size: {}px; font-weight: {}; }}",
         config.border_color,
-        top_style.background_color,
         config.metadata.top.band_size_px.max(0),
-        top_style.padding_px.max(0),
-        left_style.background_color,
         config.metadata.left.band_size_px.max(0),
-        left_style.padding_px.max(0),
         top_style.background_color,
         top_style.text_color,
+        top_style.background_color,
+        top_style.padding_px.max(0),
         top_style.font_family,
         top_style.font_size_px.max(1),
         top_style.font_weight.max(100),
         left_style.text_color,
+        left_style.background_color,
+        left_style.padding_px.max(0),
         left_style.font_family,
         left_style.font_size_px.max(1),
         left_style.font_weight.max(100),

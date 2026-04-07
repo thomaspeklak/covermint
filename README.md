@@ -105,11 +105,16 @@ to:
 - `~/.config/covermint/config.toml`
 
 Top-level config keys mirror CLI flags with snake_case names, for example:
-- `monitor`, `player`, `size`, `width`, `height`, `placement`
+- `monitor`, `player`, `size`, `width`, `height`, `artwork_fit`, `placement`
 - `offset_x`, `offset_y`, `margin`
 - `border_width`, `border_color`, `corner_radius`, `opacity`
 - `transition`, `transition_ms`, `poll_seconds`
 - `show_paused`, `no_cache`, `cache_max_files`, `cache_max_mb`, `layer`
+
+`artwork_fit` values:
+- `contain` keeps full art (possible letterboxing)
+- `cover` fills frame with crop (default)
+- `fill` stretches to fill (distorts)
 
 Metadata-specific capabilities:
 - supported template fields: `{{artist}}`, `{{title}}`, `{{album}}`, `{{trackNumber}}`, `{{length}}`
