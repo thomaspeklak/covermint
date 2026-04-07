@@ -546,6 +546,7 @@ fn build_ui(app: &gtk::Application, config: Rc<Config>) {
                 }
 
                 window_ref.set_visible(true);
+                reassert_layer_surface(&window_ref, &config_ref);
             }
             _ => handle_empty_state(),
         }
@@ -919,6 +920,12 @@ fn schedule_startup_splash_dismissal(
     glib::timeout_add_local_once(STARTUP_SPLASH_MIN_SHOW, move || {
         dismiss_startup_splash(&window, &splash_picture, &splash_active, &current_url);
     });
+}
+
+fn reassert_layer_surface(window: &gtk::ApplicationWindow, config: &Config) {
+    if window.is_visible() && matches!(config.layer, ShellLayer::Background) {
+        window.present();
+    }
 }
 
 fn dismiss_startup_splash(

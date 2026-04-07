@@ -100,7 +100,7 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 --no-cache                  Disable remote artwork cache reads and writes
 --cache-max-files <n>       Cap the remote artwork cache entry count (default: 128)
 --cache-max-mb <n>          Cap the remote artwork cache size in MiB (default: 256)
---layer background|bottom   Choose the layer-shell layer
+--layer background|bottom   Choose the layer-shell layer (`bottom` is more resilient if your wallpaper tool recreates background surfaces)
 --list-monitors             Print detected monitors and exit
 --list-players              Print detected MPRIS player names and exit
 --help, -h                  Print usage and exit successfully
@@ -126,6 +126,18 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 - more advanced styling controls are still pending beyond border/radius/opacity polish
 
 ## Troubleshooting
+
+### Wallpaper tools hiding the artwork layer
+
+If your wallpaper daemon or periodic wallpaper-change script recreates its own background-layer surface, it can temporarily cover Covermint when you run Covermint with `--layer background`.
+
+Covermint now re-presents its background-layer surface on refresh so it can recover, but if you want the most stable behavior with wallpaper tools, prefer:
+
+```bash
+cargo run --release -- --monitor auto --layer bottom
+```
+
+`bottom` still stays behind normal app windows while sitting above background wallpapers.
 
 ### Mesa / Intel renderer warnings
 
