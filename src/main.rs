@@ -576,13 +576,16 @@ fn new_artwork_picture(config: &Config) -> gtk::Picture {
 
 fn new_splash_picture(config: &Config) -> gtk::Picture {
     let picture = gtk::Picture::new();
-    picture.set_size_request(config.width, config.height);
+    picture.set_size_request(
+        (config.width * 2 / 3).max(1),
+        (config.height * 2 / 3).max(1),
+    );
     picture.set_can_shrink(true);
     picture.set_content_fit(gtk::ContentFit::Contain);
-    picture.set_hexpand(true);
-    picture.set_vexpand(true);
-    picture.set_halign(gtk::Align::Fill);
-    picture.set_valign(gtk::Align::Fill);
+    picture.set_hexpand(false);
+    picture.set_vexpand(false);
+    picture.set_halign(gtk::Align::Center);
+    picture.set_valign(gtk::Align::Center);
     picture.set_visible(false);
     picture
 }
