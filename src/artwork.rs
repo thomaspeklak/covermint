@@ -3,6 +3,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     env, fs,
     hash::{Hash, Hasher},
+    io::Read,
     path::PathBuf,
     time::{Duration, SystemTime},
 };
@@ -49,7 +50,7 @@ fn cache_dir() -> Option<PathBuf> {
 }
 
 fn cache_path(url: &str) -> Option<PathBuf> {
-    let parsed = reqwest::Url::parse(url).ok()?;
+    let parsed = url::Url::parse(url).ok()?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return None;
     }
@@ -110,12 +111,15 @@ fn trim_cache(dir: &PathBuf, max_files: usize, max_bytes: u64) {
 }
 
 fn artwork_bytes(url: &str) -> Option<Vec<u8>> {
-    let parsed = reqwest::Url::parse(url).ok()?;
+    let parsed = url::Url::parse(url).ok()?;
     match parsed.scheme() {
         "file" => fs::read(parsed.to_file_path().ok()?).ok(),
         "http" | "https" => {
-            let response = reqwest::blocking::get(url).ok()?.error_for_status().ok()?;
-            Some(response.bytes().ok()?.to_vec())
+            let response = ureq::get(url).call().ok()?;
+            let mut reader = response.into_reader();
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).ok()?;
+            Some(bytes)
         }
         _ => None,
     }
