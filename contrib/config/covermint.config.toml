@@ -132,7 +132,8 @@ duration_ms = 680
 enabled = true
 
 # Template syntax:
-#   {{artist}} {{title}} {{album}} {{trackNumber}} {{length}}
+#   {{artist}} {{title}} {{album}} {{trackNumber}} {{length}} {{position}}
+#   ({{timestamp}} is an alias for {{position}})
 # Optional per-field truncation preference modifier:
 #   :start or :end
 # Line breaks are supported via \n
@@ -207,6 +208,6 @@ band_size_px = 34
 # "{{artist}} — {{title}}"
 # "#{{trackNumber}} {{title}}"
 # "{{artist}}\n{{album}}"
-# "{{title}} · {{length}}"
+# "{{title}} · {{position}} / {{length}}"
 # "{{artist:start}}"
 # "{{title:end}}"

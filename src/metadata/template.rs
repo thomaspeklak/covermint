@@ -28,6 +28,7 @@ enum TemplateField {
     Album,
     TrackNumber,
     Length,
+    Position,
 }
 
 impl TemplateField {
@@ -38,6 +39,7 @@ impl TemplateField {
             "album" => Some(Self::Album),
             "trackNumber" => Some(Self::TrackNumber),
             "length" => Some(Self::Length),
+            "position" | "timestamp" => Some(Self::Position),
             _ => None,
         }
     }
@@ -49,6 +51,7 @@ impl TemplateField {
             Self::Album => &metadata.album,
             Self::TrackNumber => &metadata.track_number,
             Self::Length => &metadata.length,
+            Self::Position => &metadata.position,
         }
     }
 }

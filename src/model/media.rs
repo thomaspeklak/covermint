@@ -27,6 +27,9 @@ pub(crate) struct TrackMetadata {
     pub(crate) album: String,
     pub(crate) track_number: String,
     pub(crate) length: String,
+    pub(crate) length_microseconds: Option<u64>,
+    pub(crate) position: String,
+    pub(crate) position_microseconds: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

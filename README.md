@@ -116,7 +116,8 @@ Top-level config keys mirror CLI flags with snake_case names, for example:
 - `fill` stretches to fill (distorts)
 
 Metadata-specific capabilities:
-- supported template fields: `{{artist}}`, `{{title}}`, `{{album}}`, `{{trackNumber}}`, `{{length}}`
+- supported template fields: `{{artist}}`, `{{title}}`, `{{album}}`, `{{trackNumber}}`, `{{length}}`, `{{position}}` (`{{timestamp}}` alias)
+- `{{position}}` / `{{timestamp}}` uses a smooth internal playback clock while playing and is periodically resynced from MPRIS
 - line breaks in templates: `\n`
 - template truncation modifiers: `:start`, `:end` (for example `{{title:end}}`)
 - animation directions: `tl-br`, `l-r`, `r-l`, `t-b`, `b-t`, `br-tl`

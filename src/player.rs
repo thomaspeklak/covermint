@@ -20,21 +20,22 @@ pub(crate) fn query_player(player: &str, include_metadata: bool) -> Option<Media
 
     let selected = if player.eq_ignore_ascii_case("auto") {
         players
-            .values()
-            .max_by_key(|state| (state.status.auto_select_rank(), state.art_url.is_some()))
-            .cloned()
+            .into_iter()
+            .max_by_key(|(_, state)| (state.status.auto_select_rank(), state.art_url.is_some()))
     } else {
-        players.iter().find_map(|(name, state)| {
-            if selector_matches_player(name, player) {
-                Some(state.clone())
-            } else {
-                None
-            }
-        })
+        players
+            .into_iter()
+            .find(|(name, _)| selector_matches_player(name, player))
     };
 
-    selected.map(|mut state| {
-        if !include_metadata {
+    selected.map(|(player_name, mut state)| {
+        if include_metadata {
+            if let Some(position_microseconds) = mpris::position_microseconds_now(&player_name) {
+                state.metadata.position_microseconds = Some(position_microseconds);
+                state.metadata.position =
+                    mpris::format_timestamp_microseconds(position_microseconds);
+            }
+        } else {
             state.metadata = TrackMetadata::default();
         }
         state

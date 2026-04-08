@@ -4,7 +4,7 @@ This note records the investigation behind Covermint's metadata templating syste
 
 ## Requirements considered
 
-- Placeholders: `{{artist}}`, `{{title}}`, `{{album}}`, `{{trackNumber}}`, `{{length}}`
+- Placeholders: `{{artist}}`, `{{title}}`, `{{album}}`, `{{trackNumber}}`, `{{length}}`, `{{position}}` (`{{timestamp}}` alias)
 - Escape line breaks with `\n`
 - Modifiers for truncation intent: `:start`, `:end`
 - Two layout sections: `top` and `left`
@@ -62,6 +62,7 @@ Decision: selected.
   - `album`
   - `trackNumber`
   - `length` (formatted `min:sec`)
+  - `position` / `timestamp` (current playback position, formatted `min:sec`)
 - Optional field modifier:
   - `:start`
   - `:end`

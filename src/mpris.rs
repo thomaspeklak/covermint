@@ -46,6 +46,25 @@ pub(crate) fn player_names() -> Vec<String> {
     snapshot().into_keys().collect()
 }
 
+pub(crate) fn position_microseconds_now(player_name: &str) -> Option<u64> {
+    let connection = Connection::session().ok()?;
+    let bus_name = if player_name.starts_with(MPRIS_PREFIX) {
+        player_name.to_string()
+    } else {
+        format!("{MPRIS_PREFIX}{player_name}")
+    };
+
+    let proxy = Proxy::new(
+        &connection,
+        bus_name.as_str(),
+        MPRIS_PATH,
+        MPRIS_PLAYER_IFACE,
+    )
+    .ok()?;
+
+    metadata_position_microseconds(&proxy)
+}
+
 fn cached_snapshot() -> Option<BTreeMap<String, MediaState>> {
     let runtime = RUNTIME.get()?;
     runtime.cache.read().ok().map(|cache| cache.clone())
@@ -257,6 +276,9 @@ fn query_player_state(connection: &Connection, bus_name: &str) -> Option<MediaSt
     let metadata_map: HashMap<String, OwnedValue> =
         proxy.get_property("Metadata").unwrap_or_default();
 
+    let length_microseconds = metadata_length_microseconds(&metadata_map);
+    let position_microseconds = metadata_position_microseconds(&proxy);
+
     Some(MediaState {
         status,
         art_url: metadata_map
@@ -274,7 +296,14 @@ fn query_player_state(connection: &Connection, bus_name: &str) -> Option<MediaSt
                 .and_then(value_to_string)
                 .unwrap_or_default(),
             track_number: metadata_track_number(&metadata_map),
-            length: metadata_length(&metadata_map),
+            length: length_microseconds
+                .map(format_timestamp_microseconds)
+                .unwrap_or_default(),
+            length_microseconds,
+            position: position_microseconds
+                .map(format_timestamp_microseconds)
+                .unwrap_or_default(),
+            position_microseconds,
         },
     })
 }
@@ -312,18 +341,20 @@ fn metadata_track_number(metadata: &HashMap<String, OwnedValue>) -> String {
         .unwrap_or_default()
 }
 
-fn metadata_length(metadata: &HashMap<String, OwnedValue>) -> String {
-    let Some(value) = metadata.get("mpris:length") else {
-        return String::new();
-    };
+fn metadata_length_microseconds(metadata: &HashMap<String, OwnedValue>) -> Option<u64> {
+    let value = metadata.get("mpris:length")?;
 
-    let microseconds = value_to_i64(value)
+    value_to_i64(value)
         .and_then(|raw| u64::try_from(raw).ok())
-        .or_else(|| value_to_u64(value));
+        .or_else(|| value_to_u64(value))
+}
 
-    microseconds
-        .map(format_length_microseconds)
-        .unwrap_or_default()
+fn metadata_position_microseconds(proxy: &Proxy<'_>) -> Option<u64> {
+    proxy
+        .get_property::<i64>("Position")
+        .ok()
+        .and_then(|raw| u64::try_from(raw).ok())
+        .or_else(|| proxy.get_property::<u64>("Position").ok())
 }
 
 fn try_owned<T>(value: &OwnedValue) -> Option<T>
@@ -356,7 +387,7 @@ fn value_to_u64(value: &OwnedValue) -> Option<u64> {
         .or_else(|| try_owned::<i32>(value).and_then(|raw| u64::try_from(raw).ok()))
 }
 
-fn format_length_microseconds(microseconds: u64) -> String {
+pub(crate) fn format_timestamp_microseconds(microseconds: u64) -> String {
     let total_seconds = microseconds / 1_000_000;
     let minutes = total_seconds / 60;
     let seconds = total_seconds % 60;
