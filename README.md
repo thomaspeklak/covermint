@@ -12,7 +12,7 @@ Instead of editing your wallpaper file, it opens a small GTK window on the `back
 
 This repo is still an early spike, but it already works for the basic flow:
 
-- polls `playerctl` for playback status and `mpris:artUrl`
+- subscribes to MPRIS D-Bus change signals and keeps a reconciled session-bus snapshot of player state
 - downloads the current artwork
 - renders it with GTK4
 - places it on a selected monitor
@@ -27,7 +27,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - metadata overlays around the cover: artist on top and title on the left, with truncation, per-character animations, and template-based text sections
 - `none`, `fade`, `flip`, `hinge`, edge-anchored `slide`, and same-edge `cover` transitions with configurable timing and eased motion
 - local caching for remote artwork, including configurable size/count limits and `file://` support
-- player selection/discovery, configurable polling, and optional paused-state visibility
+- player selection/discovery from session-bus MPRIS names, signal-driven updates, low-frequency reconciliation, and optional paused-state visibility
 - a small embedded startup splash using the grungy Covermint logo, centered at about two thirds of the artwork frame and shown briefly above the first resolved state
 
 For the exact flag surface, use the **CLI reference** below.
@@ -38,8 +38,7 @@ For the exact flag surface, use the **CLI reference** below.
 
 - Linux Wayland session
 - a compositor with `layer-shell` support
-- `playerctl` in `PATH`
-- an MPRIS-compatible player exposing `mpris:artUrl`
+- an MPRIS-compatible player exposing `mpris:artUrl` on the session bus
 - network access for remote artwork URLs
 
 ### Build
@@ -165,7 +164,7 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 ```text
 --monitor auto|internal|external|<index>|#<index>|<name>
                            Pick a monitor by alias, list index (0 or #0), connector, manufacturer, or model substring
---player auto|<name>        MPRIS player name passed to playerctl; auto prefers playing players and then players with artwork
+--player auto|<name>        MPRIS player name from the session bus; auto prefers playing players and then players with artwork
 --size <px>                 Shorthand for setting both --width and --height
 --width <px>                Artwork width in pixels
 --height <px>               Artwork height in pixels
@@ -180,7 +179,7 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 --opacity <0.0-1.0>         Overall artwork opacity
 --transition none|fade|flip|hinge|slide|cover Artwork transition style (`slide` and `cover` require an edge-adjacent placement, so `center` is rejected)
 --transition-ms <n>         Transition duration in milliseconds
---poll-seconds <n>          Refresh interval
+--poll-seconds <n>          UI refresh interval (also used to derive low-frequency MPRIS reconciliation cadence)
 --show-paused               Keep the last artwork visible while playback is paused
 --no-cache                  Disable remote artwork cache reads and writes
 --cache-max-files <n>       Cap the remote artwork cache entry count (default: 128)
@@ -201,12 +200,12 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 
 ## Current limitations
 
-- the app polls instead of reacting to MPRIS signals
+- updates are signal-driven, but a low-frequency reconciliation path is still retained for robustness
 - the startup splash is intentionally brief and always yields to artwork after a short fade
 - placement follows monitor changes on the polling interval, not instantly via display event subscriptions
 - some players, including Spotify, often expose artwork around `640x640`
 - artwork is scaled to the configured frame size in both directions; tune it with `--size`, `--width`, and `--height`
-- automatic player selection now prefers playing players and then players with artwork, but it still depends on what `playerctl -l` can discover
+- automatic player selection now prefers playing players and then players with artwork, and it depends on what MPRIS names are visible on the session bus
 - paused artwork stays hidden unless `--show-paused` is enabled
 - the cache is local-only and bounded by simple LRU-style file-count and size limits when enabled
 - only `http`, `https`, and `file` artwork URLs are supported right now
