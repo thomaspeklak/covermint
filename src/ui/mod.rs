@@ -19,7 +19,10 @@ use crate::{
 use self::{
     layout::{cover_frame_size, layout_window_size, metadata_band_sizes, sync_window_target},
     runtime::{UiRefreshState, install_refresh_loop},
-    splash::{SPLASH_LOGO, new_splash_picture, schedule_startup_splash_dismissal},
+    splash::{
+        SPLASH_LOGO, new_splash_view, schedule_startup_splash_dismissal, set_splash_texture,
+        start_splash_animation,
+    },
     style::install_styles,
     widgets::new_artwork_layer,
 };
@@ -56,12 +59,13 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
 
     let primary_artwork = new_artwork_layer(&config);
     let secondary_artwork = new_artwork_layer(&config);
-    let splash_picture = new_splash_picture(&config);
+    let splash = new_splash_view(&config);
     secondary_artwork.picture.set_opacity(0.0);
 
     let splash_enabled = if let Some(texture) = load_texture(SPLASH_LOGO.to_vec()) {
-        splash_picture.set_paintable(Some(&texture));
-        splash_picture.set_visible(true);
+        set_splash_texture(&splash, &texture);
+        splash.stage.set_visible(true);
+        start_splash_animation(&splash);
         true
     } else {
         eprintln!("covermint: failed to load embedded splash logo");
@@ -80,7 +84,7 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     overlay.set_halign(gtk::Align::Fill);
     overlay.set_valign(gtk::Align::Fill);
     overlay.set_child(Some(&artwork_stack));
-    overlay.add_overlay(&splash_picture);
+    overlay.add_overlay(&splash.stage);
 
     let artwork_stage = gtk::Box::new(gtk::Orientation::Vertical, 0);
     artwork_stage.add_css_class("covermint-artwork-stage");
@@ -160,7 +164,7 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let media_miss_since = Rc::new(RefCell::new(None::<Instant>));
 
     if splash_enabled {
-        schedule_startup_splash_dismissal(&window, &splash_picture, &splash_active, &current_url);
+        schedule_startup_splash_dismissal(&window, &splash, &splash_active, &current_url);
     }
 
     install_refresh_loop(UiRefreshState {
