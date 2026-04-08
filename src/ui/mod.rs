@@ -162,6 +162,9 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let transition_source = Rc::new(RefCell::new(None::<gtk::glib::SourceId>));
     let splash_active = Rc::new(RefCell::new(splash_enabled));
     let media_miss_since = Rc::new(RefCell::new(None::<Instant>));
+    let last_track_signature = Rc::new(RefCell::new(None::<String>));
+    let last_media_state = Rc::new(RefCell::new(None::<crate::model::MediaState>));
+    let playback_clock = Rc::new(RefCell::new(None::<runtime::PlaybackClock>));
 
     if splash_enabled {
         schedule_startup_splash_dismissal(&window, &splash, &splash_active, &current_url);
@@ -180,5 +183,8 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         transition_source,
         splash_active,
         media_miss_since,
+        last_track_signature,
+        last_media_state,
+        playback_clock,
     });
 }

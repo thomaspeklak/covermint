@@ -6,7 +6,7 @@ use crate::model::{
 };
 
 use super::{
-    animation::{animate_metadata_text, stop_text_animation},
+    animation::{animate_metadata_text, set_metadata_text_immediate, stop_text_animation},
     template::{RenderedMetadata, SectionRender},
 };
 
@@ -116,10 +116,11 @@ pub(crate) fn update_metadata_widgets(
     widgets: &MetadataWidgets,
     config: &MetadataConfig,
     rendered: RenderedMetadata,
+    animate: bool,
 ) {
     if let Some(widget) = widgets.top.as_ref() {
         if let Some(section_render) = rendered.top.as_ref() {
-            update_single_metadata_label(widget, &config.top, section_render);
+            update_single_metadata_label(widget, &config.top, section_render, animate);
         } else {
             reset_metadata_label(widget);
         }
@@ -127,7 +128,7 @@ pub(crate) fn update_metadata_widgets(
 
     if let Some(widget) = widgets.left.as_ref() {
         if let Some(section_render) = rendered.left.as_ref() {
-            update_single_metadata_label(widget, &config.left, section_render);
+            update_single_metadata_label(widget, &config.left, section_render, animate);
         } else {
             reset_metadata_label(widget);
         }
@@ -150,6 +151,7 @@ fn update_single_metadata_label(
     widget: &AnimatedMetadataLabel,
     section: &MetadataSectionConfig,
     rendered: &SectionRender,
+    animate: bool,
 ) {
     let extent = match widget.section {
         MetadataSection::Top => widget.wrapper.width(),
@@ -174,8 +176,12 @@ fn update_single_metadata_label(
         return;
     }
 
-    stop_text_animation(widget);
-    animate_metadata_text(widget, &display_text, section);
+    if animate {
+        stop_text_animation(widget);
+        animate_metadata_text(widget, &display_text, section);
+    } else {
+        set_metadata_text_immediate(widget, &display_text);
+    }
 }
 
 fn truncate_label_text(

@@ -15,15 +15,20 @@ pub(super) fn stop_text_animation(widget: &AnimatedMetadataLabel) {
     }
 }
 
+pub(super) fn set_metadata_text_immediate(widget: &AnimatedMetadataLabel, text: &str) {
+    stop_text_animation(widget);
+    let markup = markup_for_visible_text(text);
+    widget.label.set_markup(&markup);
+    *widget.current_text.borrow_mut() = text.to_string();
+}
+
 pub(super) fn animate_metadata_text(
     widget: &AnimatedMetadataLabel,
     text: &str,
     section: &MetadataSectionConfig,
 ) {
     if section.animation.duration_ms == 0 || section.animation.mode == TextAnimationMode::None {
-        let markup = markup_for_visible_text(text);
-        widget.label.set_markup(&markup);
-        *widget.current_text.borrow_mut() = text.to_string();
+        set_metadata_text_immediate(widget, text);
         return;
     }
 
