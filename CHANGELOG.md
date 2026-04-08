@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.2.0] — 2026-04-08
+
+### Features
+- feat(metadata): add playback position template fields (6db19ae)
+- feat(ui): add CRT-style splash glitch and power-off shutdown (7a5f0fc)
+- Refactor app modules and add signal-driven MPRIS backend (f373095)
+
+### Bug Fixes
+- fix(ui): smooth position ticks without retriggering metadata animation (828c48b)
+
+### Chores / Other
+- refactor(ui): extract playback clock and timestamp helpers (084961a)
+- perf(build): shrink binary via release profile and ureq (b9f6907)
+
 ## [0.1.1] — 2026-04-07
 
 ### Bug Fixes
