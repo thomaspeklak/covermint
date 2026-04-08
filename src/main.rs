@@ -10,6 +10,7 @@ mod monitor;
 mod motion;
 mod mpris;
 mod player;
+mod timestamp;
 mod transitions;
 mod ui;
 

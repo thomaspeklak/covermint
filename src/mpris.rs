@@ -11,7 +11,10 @@ use zbus::{
     zvariant::OwnedValue,
 };
 
-use crate::model::{MediaState, PlaybackStatus, TrackMetadata};
+use crate::{
+    model::{MediaState, PlaybackStatus, TrackMetadata},
+    timestamp::format_timestamp_microseconds,
+};
 
 const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
@@ -385,11 +388,4 @@ fn value_to_u64(value: &OwnedValue) -> Option<u64> {
         .or_else(|| try_owned::<i64>(value).and_then(|raw| u64::try_from(raw).ok()))
         .or_else(|| try_owned::<u32>(value).map(u64::from))
         .or_else(|| try_owned::<i32>(value).and_then(|raw| u64::try_from(raw).ok()))
-}
-
-pub(crate) fn format_timestamp_microseconds(microseconds: u64) -> String {
-    let total_seconds = microseconds / 1_000_000;
-    let minutes = total_seconds / 60;
-    let seconds = total_seconds % 60;
-    format!("{minutes}:{seconds:02}")
 }

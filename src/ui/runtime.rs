@@ -8,26 +8,20 @@ use std::{
 use crate::{
     artwork::download_texture,
     metadata::{self, MetadataWidgets},
-    model::{ArtworkSlot, Config, MediaState, PlaybackStatus, ShellLayer, TrackMetadata},
-    mpris,
+    model::{ArtworkSlot, Config, MediaState, PlaybackStatus, ShellLayer},
     player::query_player,
+    timestamp::{format_timestamp_microseconds, parse_timestamp_microseconds},
     transitions::{clear_artwork, set_artwork_texture},
 };
 
-use super::{ArtworkLayer, layout::sync_window_target};
+use super::{
+    ArtworkLayer,
+    layout::sync_window_target,
+    playback_clock::{POSITION_TICK_INTERVAL, PlaybackClock, TrackIdentity},
+};
 
 const MEDIA_MISS_GRACE: Duration = Duration::from_secs(5);
 const MPRIS_EVENT_PUMP_INTERVAL: Duration = Duration::from_millis(200);
-const POSITION_TICK_INTERVAL: Duration = Duration::from_millis(100);
-const CLOCK_REANCHOR_DRIFT_MICROSECONDS: u64 = 400_000;
-
-#[derive(Clone, Debug)]
-pub(super) struct PlaybackClock {
-    track_signature: String,
-    anchor_position_microseconds: u64,
-    anchor_time: Instant,
-    length_microseconds: Option<u64>,
-}
 
 #[derive(Clone)]
 pub(super) struct UiRefreshState {
@@ -43,7 +37,7 @@ pub(super) struct UiRefreshState {
     pub(super) transition_source: Rc<RefCell<Option<glib::SourceId>>>,
     pub(super) splash_active: Rc<RefCell<bool>>,
     pub(super) media_miss_since: Rc<RefCell<Option<Instant>>>,
-    pub(super) last_track_signature: Rc<RefCell<Option<String>>>,
+    pub(super) last_track_identity: Rc<RefCell<Option<TrackIdentity>>>,
     pub(super) last_media_state: Rc<RefCell<Option<MediaState>>>,
     pub(super) playback_clock: Rc<RefCell<Option<PlaybackClock>>>,
 }
@@ -137,7 +131,7 @@ impl UiRefreshState {
 
                 *self.last_media_state.borrow_mut() = Some(state.clone());
                 if include_metadata {
-                    self.sync_playback_clock(state.art_url.as_deref(), &state);
+                    self.sync_playback_clock(&state);
                 } else {
                     *self.playback_clock.borrow_mut() = None;
                 }
@@ -192,7 +186,7 @@ impl UiRefreshState {
         );
         metadata::clear_metadata_widgets(&self.metadata_widgets);
         *self.current_url.borrow_mut() = None;
-        *self.last_track_signature.borrow_mut() = None;
+        *self.last_track_identity.borrow_mut() = None;
         *self.last_media_state.borrow_mut() = None;
         *self.playback_clock.borrow_mut() = None;
 
@@ -216,64 +210,52 @@ impl UiRefreshState {
         }
     }
 
-    fn should_animate_metadata(&self, art_url: Option<&str>, metadata: &TrackMetadata) -> bool {
-        let signature = track_signature(art_url, metadata);
-        let mut previous = self.last_track_signature.borrow_mut();
+    fn should_animate_metadata(
+        &self,
+        art_url: Option<&str>,
+        metadata: &crate::model::TrackMetadata,
+    ) -> bool {
+        let identity = TrackIdentity::from_metadata(art_url, metadata);
+        let mut previous = self.last_track_identity.borrow_mut();
 
-        if previous.as_deref() == Some(signature.as_str()) {
+        if previous.as_ref() == Some(&identity) {
             false
         } else {
-            *previous = Some(signature);
+            *previous = Some(identity);
             true
         }
     }
 
-    fn sync_playback_clock(&self, art_url: Option<&str>, state: &MediaState) {
+    fn sync_playback_clock(&self, state: &MediaState) {
         if state.status != PlaybackStatus::Playing {
             *self.playback_clock.borrow_mut() = None;
             return;
         }
 
-        let anchor_position_microseconds = state.metadata.position_microseconds.or_else(|| {
-            parse_timestamp_seconds(&state.metadata.position)
-                .map(|seconds| seconds.saturating_mul(1_000_000))
-        });
+        let anchor_position_microseconds = state
+            .metadata
+            .position_microseconds
+            .or_else(|| parse_timestamp_microseconds(&state.metadata.position));
 
         let Some(anchor_position_microseconds) = anchor_position_microseconds else {
             *self.playback_clock.borrow_mut() = None;
             return;
         };
 
-        let length_microseconds = state.metadata.length_microseconds.or_else(|| {
-            parse_timestamp_seconds(&state.metadata.length)
-                .map(|seconds| seconds.saturating_mul(1_000_000))
-        });
+        let length_microseconds = state
+            .metadata
+            .length_microseconds
+            .or_else(|| parse_timestamp_microseconds(&state.metadata.length));
 
-        let signature = track_signature(art_url, &state.metadata);
-        let mut clock = self.playback_clock.borrow_mut();
-
-        if let Some(existing) = clock.as_mut()
-            && existing.track_signature == signature
-        {
-            let elapsed_microseconds =
-                u64::try_from(existing.anchor_time.elapsed().as_micros()).unwrap_or(u64::MAX);
-            let predicted_position = existing
-                .anchor_position_microseconds
-                .saturating_add(elapsed_microseconds);
-            let drift = predicted_position.abs_diff(anchor_position_microseconds);
-
-            if drift <= CLOCK_REANCHOR_DRIFT_MICROSECONDS {
-                existing.length_microseconds = length_microseconds;
-                return;
-            }
-        }
-
-        *clock = Some(PlaybackClock {
-            track_signature: signature,
+        let track = TrackIdentity::from_metadata(state.art_url.as_deref(), &state.metadata);
+        let mut clock_slot = self.playback_clock.borrow_mut();
+        let existing = clock_slot.take();
+        *clock_slot = Some(PlaybackClock::sync(
+            existing,
+            track,
             anchor_position_microseconds,
-            anchor_time: Instant::now(),
             length_microseconds,
-        });
+        ));
     }
 
     fn tick_position_display(&self) {
@@ -297,20 +279,13 @@ impl UiRefreshState {
             return;
         }
 
-        if track_signature(state.art_url.as_deref(), &state.metadata) != clock.track_signature {
+        let state_track = TrackIdentity::from_metadata(state.art_url.as_deref(), &state.metadata);
+        if &state_track != clock.track() {
             return;
         }
 
-        let elapsed_microseconds =
-            u64::try_from(clock.anchor_time.elapsed().as_micros()).unwrap_or(u64::MAX);
-        let mut position_microseconds = clock
-            .anchor_position_microseconds
-            .saturating_add(elapsed_microseconds);
-        if let Some(length_microseconds) = clock.length_microseconds {
-            position_microseconds = position_microseconds.min(length_microseconds);
-        }
-
-        let position = mpris::format_timestamp_microseconds(position_microseconds);
+        let position_microseconds = clock.clamped_position_microseconds_now();
+        let position = format_timestamp_microseconds(position_microseconds);
         if state.metadata.position == position {
             return;
         }
@@ -327,32 +302,4 @@ impl UiRefreshState {
             false,
         );
     }
-}
-
-fn track_signature(art_url: Option<&str>, metadata: &TrackMetadata) -> String {
-    [
-        metadata.artist.as_str(),
-        metadata.title.as_str(),
-        metadata.album.as_str(),
-        metadata.track_number.as_str(),
-        metadata.length.as_str(),
-        art_url.unwrap_or_default(),
-    ]
-    .join("\u{1f}")
-}
-
-fn parse_timestamp_seconds(value: &str) -> Option<u64> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let (minutes, seconds) = trimmed.rsplit_once(':')?;
-    let minutes = minutes.trim().parse::<u64>().ok()?;
-    let seconds = seconds.trim().parse::<u64>().ok()?;
-    if seconds >= 60 {
-        return None;
-    }
-
-    Some(minutes.saturating_mul(60).saturating_add(seconds))
 }

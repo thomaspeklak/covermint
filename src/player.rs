@@ -1,6 +1,7 @@
 use crate::{
     model::{MediaState, TrackMetadata},
     mpris,
+    timestamp::format_timestamp_microseconds,
 };
 
 const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
@@ -32,8 +33,7 @@ pub(crate) fn query_player(player: &str, include_metadata: bool) -> Option<Media
         if include_metadata {
             if let Some(position_microseconds) = mpris::position_microseconds_now(&player_name) {
                 state.metadata.position_microseconds = Some(position_microseconds);
-                state.metadata.position =
-                    mpris::format_timestamp_microseconds(position_microseconds);
+                state.metadata.position = format_timestamp_microseconds(position_microseconds);
             }
         } else {
             state.metadata = TrackMetadata::default();
