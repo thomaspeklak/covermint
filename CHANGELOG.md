@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.3.0] — 2026-04-10
+
+### Features
+- Add configurable live lyrics panel with runtime toggle, caching, and layouts (544b946)
+
+### Bug Fixes
+- fix: stabilize lyrics layout behavior and satisfy clippy (9a9d129)
+
 ## [v0.2.0] — 2026-04-08
 
 ### Features
