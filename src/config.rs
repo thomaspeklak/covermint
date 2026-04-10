@@ -2,9 +2,9 @@ use serde::Deserialize;
 use std::{env, fs, path::PathBuf};
 
 use crate::model::{
-    ArtworkFit, Config, MetadataConfig, MetadataSectionConfig, MetadataStyleConfig, Placement,
-    RevealDirection, SectionAlign, ShellLayer, TextAnimationConfig, TextAnimationMode, Transition,
-    TruncateMode,
+    ArtworkFit, Config, LyricsConfig, LyricsLayout, MetadataConfig, MetadataSectionConfig,
+    MetadataStyleConfig, Placement, RevealDirection, SectionAlign, ShellLayer, TextAnimationConfig,
+    TextAnimationMode, Transition, TruncateMode,
 };
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../contrib/config/covermint.config.toml");
@@ -34,6 +34,7 @@ struct FileConfig {
     cache_max_mb: Option<u64>,
     layer: Option<String>,
     metadata: Option<FileMetadata>,
+    lyrics: Option<FileLyrics>,
 }
 
 #[derive(Deserialize, Default)]
@@ -71,6 +72,21 @@ struct FileAnimation {
     mode: Option<String>,
     direction: Option<String>,
     duration_ms: Option<u32>,
+}
+
+#[derive(Deserialize, Default)]
+struct FileLyrics {
+    enabled: Option<bool>,
+    layout: Option<String>,
+    lines_visible: Option<usize>,
+    panel_width: Option<i32>,
+    smooth_scroll: Option<bool>,
+    font_family: Option<String>,
+    font_size_px: Option<i32>,
+    text_color: Option<String>,
+    active_line_color: Option<String>,
+    background_color: Option<String>,
+    padding_px: Option<i32>,
 }
 
 fn config_file_path() -> Option<PathBuf> {
@@ -216,6 +232,13 @@ pub(crate) fn load_external_config(config: &mut Config) -> Result<(), String> {
         }
     }
 
+    if let Some(lyrics) = file.lyrics {
+        apply_lyrics_override(&mut config.lyrics, &lyrics)?;
+        if let Some(enabled) = lyrics.enabled {
+            config.lyrics.enabled = enabled;
+        }
+    }
+
     if config.metadata.top.enabled
         && let Err(error) =
             crate::metadata::template::validate_template(&config.metadata.top.template)
@@ -297,6 +320,42 @@ fn apply_animation_override(
     }
     if let Some(duration_ms) = source.duration_ms {
         animation.duration_ms = duration_ms;
+    }
+
+    Ok(())
+}
+
+fn apply_lyrics_override(config: &mut LyricsConfig, source: &FileLyrics) -> Result<(), String> {
+    if let Some(layout) = source.layout.as_ref() {
+        config.layout = LyricsLayout::parse(layout)?;
+    }
+    if let Some(lines_visible) = source.lines_visible {
+        config.lines_visible = lines_visible.max(1);
+    }
+    if let Some(panel_width) = source.panel_width {
+        config.panel_width = panel_width.max(120);
+    }
+    if let Some(smooth_scroll) = source.smooth_scroll {
+        config.smooth_scroll = smooth_scroll;
+    }
+
+    if let Some(font_family) = source.font_family.as_ref() {
+        config.style.font_family = font_family.clone();
+    }
+    if let Some(font_size_px) = source.font_size_px {
+        config.style.font_size_px = font_size_px.max(1);
+    }
+    if let Some(text_color) = source.text_color.as_ref() {
+        config.style.text_color = text_color.clone();
+    }
+    if let Some(active_line_color) = source.active_line_color.as_ref() {
+        config.style.active_line_color = active_line_color.clone();
+    }
+    if let Some(background_color) = source.background_color.as_ref() {
+        config.style.background_color = background_color.clone();
+    }
+    if let Some(padding_px) = source.padding_px {
+        config.style.padding_px = padding_px.max(0);
     }
 
     Ok(())

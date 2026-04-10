@@ -1,6 +1,6 @@
 use gtk::gdk;
 
-use crate::model::{Config, MetadataStyleConfig};
+use crate::model::{Config, LyricsStyleConfig, MetadataStyleConfig};
 
 pub(super) fn install_styles(config: &Config) {
     let provider = gtk::CssProvider::new();
@@ -14,6 +14,9 @@ pub(super) fn install_styles(config: &Config) {
     let top_label_css = metadata_label_css(".covermint-meta-top", top_style);
     let left_label_css = metadata_label_css(".covermint-meta-left", left_style);
 
+    let lyrics_style = &config.lyrics.style;
+    let lyrics_css = lyrics_label_css(lyrics_style);
+
     let css = format!(
         ".covermint-window {{ background-color: transparent; box-shadow: none; border-radius: {corner_radius}px; }}\n\
          .covermint-artwork {{ background-color: transparent; box-shadow: none; border-style: solid; border-width: {border_width}px; border-color: {}; border-radius: {corner_radius}px; }}\n\
@@ -22,7 +25,8 @@ pub(super) fn install_styles(config: &Config) {
          .covermint-meta-left {{ background-color: transparent; min-width: {}px; }}\n\
          .covermint-meta-corner {{ background-color: {}; }}\n\
          {top_label_css}\n\
-         {left_label_css}",
+         {left_label_css}\n\
+         {lyrics_css}",
         config.border_color,
         config.metadata.top.band_size_px.max(0),
         config.metadata.left.band_size_px.max(0),
@@ -49,5 +53,25 @@ fn metadata_label_css(selector: &str, style: &MetadataStyleConfig) -> String {
         style.font_family,
         style.font_size_px.max(1),
         style.font_weight.max(100),
+    )
+}
+
+fn lyrics_label_css(style: &LyricsStyleConfig) -> String {
+    format!(
+        ".covermint-lyrics-frame {{ background-color: {}; border-radius: 10px; }}\n\
+         .covermint-lyrics-frame .covermint-lyrics-label {{ color: {}; background-color: transparent; padding: {}px; font-family: '{}'; font-size: {}px; font-weight: 700; }}\n\
+         .covermint-lyrics-frame .covermint-lyrics-multiline {{ padding: {}px; }}\n\
+         .covermint-lyrics-frame .covermint-lyrics-line {{ color: {}; background-color: transparent; font-family: '{}'; font-size: {}px; font-weight: 500; }}\n\
+         .covermint-lyrics-frame .covermint-lyrics-line-current {{ color: {}; font-weight: 800; }}",
+        style.background_color,
+        style.text_color,
+        style.padding_px.max(0),
+        style.font_family,
+        style.font_size_px.max(1),
+        style.padding_px.max(0),
+        style.text_color,
+        style.font_family,
+        style.font_size_px.max(1),
+        style.active_line_color,
     )
 }

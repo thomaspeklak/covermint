@@ -5,7 +5,7 @@ mod splash;
 mod style;
 mod widgets;
 
-pub(crate) use widgets::ArtworkLayer;
+pub(crate) use widgets::{ArtworkLayer, LyricsWidget, LyricsWidgetMode};
 
 use gtk::prelude::*;
 use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
@@ -14,22 +14,26 @@ use std::{cell::RefCell, rc::Rc, time::Instant};
 use crate::{
     artwork::load_texture,
     metadata::{self, MetadataWidgets},
-    model::{ArtworkSlot, Config, MetadataSection, ShellLayer},
+    model::{ArtworkSlot, Config, LyricsLayout, MetadataSection, ShellLayer},
 };
 
 use self::{
-    layout::{cover_frame_size, layout_window_size, metadata_band_sizes, sync_window_target},
-    runtime::{UiRefreshState, install_refresh_loop},
+    layout::{
+        cover_frame_size, layout_window_size, lyrics_frame_size, lyrics_panel_bottom_height,
+        lyrics_panel_left_width, metadata_band_sizes, panel_base_size, sync_window_target,
+    },
+    runtime::{LyricsScrollAnimation, UiRefreshState, install_refresh_loop},
     splash::{
         SPLASH_LOGO, new_splash_view, schedule_startup_splash_dismissal, set_splash_texture,
         start_splash_animation,
     },
     style::install_styles,
-    widgets::new_artwork_layer,
+    widgets::{new_artwork_layer, new_lyrics_widget},
 };
 
 pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let (window_width, window_height) = layout_window_size(&config);
+    let (_, panel_base_height) = panel_base_size(&config);
     let (cover_width, cover_height) = cover_frame_size(&config);
     let window = gtk::ApplicationWindow::builder()
         .application(app)
@@ -123,6 +127,8 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     };
 
     let (left_band, top_band) = metadata_band_sizes(&config);
+    let panel_origin_x = lyrics_panel_left_width(&config);
+    let lyrics_bottom_extra = lyrics_panel_bottom_height(&config);
 
     let root = gtk::Fixed::new();
     root.set_size_request(window_width, window_height);
@@ -130,7 +136,11 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     root.set_valign(gtk::Align::Fill);
     root.set_overflow(gtk::Overflow::Hidden);
 
-    root.put(&cover_frame, left_band as f64, top_band as f64);
+    root.put(
+        &cover_frame,
+        (panel_origin_x + left_band) as f64,
+        top_band as f64,
+    );
 
     if left_band > 0 && top_band > 0 {
         let corner_fill = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -138,16 +148,36 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         corner_fill.set_size_request(left_band, top_band);
         corner_fill.set_halign(gtk::Align::Fill);
         corner_fill.set_valign(gtk::Align::Fill);
-        root.put(&corner_fill, 0.0, 0.0);
+        root.put(&corner_fill, panel_origin_x as f64, 0.0);
     }
 
     if let Some(top) = top_widget.as_ref() {
-        root.put(&top.wrapper, left_band as f64, 0.0);
+        root.put(&top.wrapper, (panel_origin_x + left_band) as f64, 0.0);
     }
 
     if let Some(left) = left_widget.as_ref() {
-        root.put(&left.wrapper, 0.0, top_band as f64);
+        root.put(&left.wrapper, panel_origin_x as f64, top_band as f64);
     }
+
+    let lyrics_widget = {
+        let (lyrics_width, lyrics_height) = lyrics_frame_size(&config);
+        let widget = new_lyrics_widget(&config, lyrics_width, lyrics_height);
+
+        match config.lyrics.layout {
+            LyricsLayout::SingleLine => {
+                root.put(
+                    &widget.frame,
+                    panel_origin_x as f64,
+                    (panel_base_height + lyrics_bottom_extra - lyrics_height) as f64,
+                );
+            }
+            LyricsLayout::MultiLine => {
+                root.put(&widget.frame, 0.0, 0.0);
+            }
+        }
+
+        Some(widget)
+    };
 
     let metadata_widgets = MetadataWidgets {
         top: top_widget,
@@ -166,6 +196,12 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
     let last_track_identity = Rc::new(RefCell::new(None::<playback_clock::TrackIdentity>));
     let last_media_state = Rc::new(RefCell::new(None::<crate::model::MediaState>));
     let playback_clock = Rc::new(RefCell::new(None::<playback_clock::PlaybackClock>));
+    let lyrics_signature = Rc::new(RefCell::new(None::<String>));
+    let synced_lyrics = Rc::new(RefCell::new(None::<crate::lyrics::SyncedLyrics>));
+    let lyrics_missing = Rc::new(RefCell::new(false));
+    let lyrics_visible = Rc::new(RefCell::new(config.lyrics.enabled));
+    let current_lyrics_index = Rc::new(RefCell::new(None::<usize>));
+    let lyrics_scroll_animation = Rc::new(RefCell::new(None::<LyricsScrollAnimation>));
 
     if splash_enabled {
         schedule_startup_splash_dismissal(&window, &splash, &splash_active, &current_url);
@@ -179,6 +215,7 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         primary_artwork,
         secondary_artwork,
         metadata_widgets,
+        lyrics_widget,
         current_url,
         active_slot,
         transition_source,
@@ -187,5 +224,11 @@ pub(crate) fn build_ui(app: &gtk::Application, config: Rc<Config>) {
         last_track_identity,
         last_media_state,
         playback_clock,
+        lyrics_signature,
+        synced_lyrics,
+        lyrics_missing,
+        lyrics_visible,
+        current_lyrics_index,
+        lyrics_scroll_animation,
     });
 }

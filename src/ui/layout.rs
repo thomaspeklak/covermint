@@ -3,7 +3,7 @@ use gtk4_layer_shell::{Edge, LayerShell};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    model::{AxisPlacement, Config, Placement},
+    model::{AxisPlacement, Config, LyricsLayout, Placement},
     monitor::{monitor_label, select_monitor},
 };
 
@@ -32,11 +32,49 @@ pub(super) fn metadata_band_sizes(config: &Config) -> (i32, i32) {
     (left_width, top_height)
 }
 
-pub(super) fn layout_window_size(config: &Config) -> (i32, i32) {
+const LYRICS_PANEL_GAP_PX: i32 = 8;
+
+pub(super) fn panel_base_size(config: &Config) -> (i32, i32) {
     let (cover_width, cover_height) = cover_frame_size(config);
     let (left_width, top_height) = metadata_band_sizes(config);
-
     (cover_width + left_width, cover_height + top_height)
+}
+
+pub(super) fn lyrics_frame_size(config: &Config) -> (i32, i32) {
+    let (base_width, base_height) = panel_base_size(config);
+    match config.lyrics.layout {
+        LyricsLayout::SingleLine => (base_width, lyrics_singleline_height(config)),
+        LyricsLayout::MultiLine => (config.lyrics.panel_width.max(120), base_height),
+    }
+}
+
+pub(super) fn lyrics_panel_left_width(config: &Config) -> i32 {
+    if matches!(config.lyrics.layout, LyricsLayout::MultiLine) {
+        config.lyrics.panel_width.max(120) + LYRICS_PANEL_GAP_PX
+    } else {
+        0
+    }
+}
+
+pub(super) fn lyrics_panel_bottom_height(config: &Config) -> i32 {
+    if matches!(config.lyrics.layout, LyricsLayout::SingleLine) {
+        lyrics_singleline_height(config)
+    } else {
+        0
+    }
+}
+
+pub(super) fn layout_window_size(config: &Config) -> (i32, i32) {
+    let (base_width, base_height) = panel_base_size(config);
+    (
+        base_width + lyrics_panel_left_width(config),
+        base_height + lyrics_panel_bottom_height(config),
+    )
+}
+
+fn lyrics_singleline_height(config: &Config) -> i32 {
+    let style = &config.lyrics.style;
+    (style.font_size_px.max(1) + style.padding_px.max(0) * 2 + 8).max(40)
 }
 
 pub(super) fn sync_window_target(

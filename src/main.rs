@@ -4,6 +4,8 @@ use std::rc::Rc;
 mod artwork;
 mod cli;
 mod config;
+mod control;
+mod lyrics;
 mod metadata;
 mod model;
 mod monitor;
@@ -44,12 +46,22 @@ fn main() -> glib::ExitCode {
         };
     }
 
+    if let StartupAction::Control(command) = &action {
+        return match control::send_command(*command) {
+            Ok(()) => glib::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("covermint: {error}");
+                glib::ExitCode::FAILURE
+            }
+        };
+    }
+
     let app = gtk::Application::builder()
         .application_id("dev.tgz.covermint")
         .build();
 
     app.connect_activate(move |app| match &action {
-        StartupAction::Help | StartupAction::InitConfig => app.quit(),
+        StartupAction::Help | StartupAction::InitConfig | StartupAction::Control(_) => app.quit(),
         StartupAction::ListMonitors => {
             monitor::list_monitors();
             app.quit();

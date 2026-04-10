@@ -1,4 +1,4 @@
-use super::MetadataConfig;
+use super::{LyricsConfig, MetadataConfig};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Config {
@@ -23,6 +23,7 @@ pub(crate) struct Config {
     pub(crate) cache_max_bytes: u64,
     pub(crate) layer: ShellLayer,
     pub(crate) metadata: MetadataConfig,
+    pub(crate) lyrics: LyricsConfig,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -117,6 +118,7 @@ impl Default for Config {
             cache_max_bytes: 256 * 1024 * 1024,
             layer: ShellLayer::Background,
             metadata: MetadataConfig::default(),
+            lyrics: LyricsConfig::default(),
         }
     }
 }

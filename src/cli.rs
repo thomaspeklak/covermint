@@ -1,8 +1,11 @@
 use std::env;
 
-use crate::model::{Config, Placement, ShellLayer, Transition};
+use crate::{
+    control::ControlCommand,
+    model::{Config, LyricsLayout, Placement, ShellLayer, Transition},
+};
 
-pub(crate) const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|hinge|slide|cover|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--init-config] [--list-monitors] [--list-players] [--help]";
+pub(crate) const USAGE: &str = "usage: covermint [--monitor auto|internal|external|0|#0|eDP-1] [--player auto|<name>] [--size 420] [--width 520] [--height 420] [--placement bottom-right] [--offset-x 48] [--offset-y 48] [--margin 48] [--border-width 2] [--border-color 'rgba(255,255,255,0.35)'] [--corner-radius 18] [--opacity 0.92] [--transition fade|flip|hinge|slide|cover|none] [--transition-ms 180] [--poll-seconds 2] [--show-paused] [--no-cache] [--cache-max-files 128] [--cache-max-mb 256] [--layer background|bottom] [--show-lyrics|--hide-lyrics] [--lyrics-layout singleline|multiline] [--lyrics-lines 7] [--lyrics-panel-width 320] [--lyrics-smooth-scroll|--lyrics-step-scroll] [--lyrics-font 'Inter, Sans'] [--lyrics-font-size 24] [--lyrics-color 'rgba(255,255,255,0.96)'] [--lyrics-active-color 'rgba(255,255,255,1.0)'] [--lyrics-background 'rgba(0,0,0,0.42)'] [--lyrics-on|--lyrics-off|--lyrics-toggle] [--init-config] [--list-monitors] [--list-players] [--help]";
 
 #[derive(Clone, Debug)]
 pub(crate) enum StartupAction {
@@ -11,6 +14,7 @@ pub(crate) enum StartupAction {
     ListMonitors,
     ListPlayers,
     Run(Box<Config>),
+    Control(ControlCommand),
 }
 
 impl StartupAction {
@@ -23,6 +27,7 @@ impl StartupAction {
         let mut init_config = false;
         let mut list_monitors = false;
         let mut list_players = false;
+        let mut control_command = None::<ControlCommand>;
 
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -87,12 +92,66 @@ impl StartupAction {
                             .saturating_mul(1024 * 1024)
                 }
                 "--layer" => config.layer = ShellLayer::parse(&next_arg(&mut args, "--layer")?)?,
+                "--show-lyrics" => config.lyrics.enabled = true,
+                "--hide-lyrics" => config.lyrics.enabled = false,
+                "--lyrics-layout" => {
+                    config.lyrics.layout =
+                        LyricsLayout::parse(&next_arg(&mut args, "--lyrics-layout")?)?
+                }
+                "--lyrics-lines" => {
+                    config.lyrics.lines_visible =
+                        parse_usize(next_arg(&mut args, "--lyrics-lines")?, "--lyrics-lines")?
+                            .max(1)
+                }
+                "--lyrics-panel-width" => {
+                    config.lyrics.panel_width = parse_i32(
+                        next_arg(&mut args, "--lyrics-panel-width")?,
+                        "--lyrics-panel-width",
+                    )?
+                    .max(120)
+                }
+                "--lyrics-smooth-scroll" => config.lyrics.smooth_scroll = true,
+                "--lyrics-step-scroll" => config.lyrics.smooth_scroll = false,
+                "--lyrics-font" => {
+                    config.lyrics.style.font_family = next_arg(&mut args, "--lyrics-font")?
+                }
+                "--lyrics-font-size" => {
+                    config.lyrics.style.font_size_px = parse_i32(
+                        next_arg(&mut args, "--lyrics-font-size")?,
+                        "--lyrics-font-size",
+                    )?
+                    .max(1)
+                }
+                "--lyrics-color" => {
+                    config.lyrics.style.text_color = next_arg(&mut args, "--lyrics-color")?
+                }
+                "--lyrics-active-color" => {
+                    config.lyrics.style.active_line_color =
+                        next_arg(&mut args, "--lyrics-active-color")?
+                }
+                "--lyrics-background" => {
+                    config.lyrics.style.background_color =
+                        next_arg(&mut args, "--lyrics-background")?
+                }
+                "--lyrics-on" => control_command = Some(ControlCommand::LyricsOn),
+                "--lyrics-off" => control_command = Some(ControlCommand::LyricsOff),
+                "--lyrics-toggle" => control_command = Some(ControlCommand::LyricsToggle),
                 "--init-config" => init_config = true,
                 "--list-monitors" => list_monitors = true,
                 "--list-players" => list_players = true,
                 "--help" | "-h" => return Ok(Self::Help),
                 other => return Err(format!("unknown argument: {other}")),
             }
+        }
+
+        if let Some(command) = control_command {
+            if init_config || list_monitors || list_players {
+                return Err(
+                    "control flags (--lyrics-on/--lyrics-off/--lyrics-toggle) cannot be combined with startup action flags"
+                        .to_string(),
+                );
+            }
+            return Ok(Self::Control(command));
         }
 
         if init_config {

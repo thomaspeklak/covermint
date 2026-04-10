@@ -82,6 +82,51 @@ cache_max_mb = 256
 layer = "background"
 
 # =============================================================================
+# Live lyrics panel
+# =============================================================================
+[lyrics]
+# Master switch for the lyrics frame.
+enabled = false
+
+# Layout mode:
+#   singleline -> compact one-line panel below the artwork panel
+#   multiline  -> dedicated panel on the left of the whole artwork+metadata panel
+layout = "singleline"
+
+# Number of visible lines for multiline layout (odd values feel best).
+lines_visible = 7
+
+# Width in px for multiline layout.
+panel_width = 320
+
+# Scroll behavior for multiline layout.
+# true  -> smooth interpolation between timestamped lines
+# false -> step-to-next-line only
+smooth_scroll = true
+
+# Font family used for live lyrics.
+font_family = "Inter, Sans"
+
+# Font size in px.
+font_size_px = 24
+
+# Lyrics text color.
+text_color = "rgba(255,255,255,0.96)"
+
+# Active/current line color in multiline layout.
+active_line_color = "rgba(255,255,255,1.0)"
+
+# Lyrics frame background color.
+background_color = "rgba(0,0,0,0.42)"
+
+# Inner padding for the lyrics frame.
+padding_px = 12
+
+# Notes:
+# - Synced lyrics are fetched only while this panel is enabled/visible.
+# - Fetched lyrics are cached in ~/.cache/covermint/lyrics.
+
+# =============================================================================
 # Metadata overlays
 # =============================================================================
 [metadata]

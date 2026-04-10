@@ -27,6 +27,7 @@ This repo is still an early spike, but it already works for the basic flow:
 - metadata overlays around the cover: artist on top and title on the left, with truncation, per-character animations, and template-based text sections
 - `none`, `fade`, `flip`, `hinge`, edge-anchored `slide`, and same-edge `cover` transitions with configurable timing and eased motion
 - local caching for remote artwork, including configurable size/count limits and `file://` support
+- optional live synced lyrics in a separate frame with configurable layouts: `singleline` (compact) and `multiline` (left-side panel with centered current-line emphasis, smooth scroll support, and distance-based fading)
 - player selection/discovery from session-bus MPRIS names, signal-driven updates, low-frequency reconciliation, and optional paused-state visibility
 - a small embedded startup splash using the grungy Covermint logo, centered at about two thirds of the artwork frame and shown briefly above the first resolved state
 
@@ -77,9 +78,14 @@ cargo run --release -- --monitor auto --player auto
 cargo run --release -- --monitor auto --show-paused
 cargo run --release -- --monitor auto --no-cache
 cargo run --release -- --monitor auto --cache-max-files 64 --cache-max-mb 128
+cargo run --release -- --monitor auto --show-lyrics --lyrics-font-size 26 --lyrics-color 'rgba(255,255,255,0.98)' --lyrics-background 'rgba(0,0,0,0.45)'
+# runtime toggle commands for an already-running instance:
+cargo run --release -- --lyrics-toggle
+cargo run --release -- --lyrics-on
+cargo run --release -- --lyrics-off
 ```
 
-## Metadata configuration (`~/.config/covermint/config.toml`)
+## Configuration (`~/.config/covermint/config.toml`)
 
 All runtime command-line options are available in config form via `~/.config/covermint/config.toml`.
 
@@ -109,6 +115,8 @@ Top-level config keys mirror CLI flags with snake_case names, for example:
 - `border_width`, `border_color`, `corner_radius`, `opacity`
 - `transition`, `transition_ms`, `poll_seconds`
 - `show_paused`, `no_cache`, `cache_max_files`, `cache_max_mb`, `layer`
+- `lyrics.enabled`, `lyrics.layout`, `lyrics.lines_visible`, `lyrics.panel_width`, `lyrics.smooth_scroll`
+- `lyrics.font_family`, `lyrics.font_size_px`, `lyrics.text_color`, `lyrics.active_line_color`, `lyrics.background_color`, `lyrics.padding_px`
 
 `artwork_fit` values:
 - `contain` keeps full art (possible letterboxing)
@@ -158,6 +166,16 @@ padding_px = 8
 
 Top/left sections can be enabled independently; when only one section is enabled, it stays aligned with the cover bounds.
 
+Lyrics notes:
+- lyrics are fetched from LRCLIB (`syncedLyrics` / LRC-style timestamps)
+- layout modes:
+  - `singleline`: compact one-line strip below the artwork panel
+  - `multiline`: left-side panel showing multiple lines, with highlighted current line and distance fade
+- `lyrics.lines_visible` controls how many lines are shown in multiline mode
+- `lyrics.smooth_scroll = true` interpolates between timestamps for smoother multiline motion
+- network fetches happen only while the lyrics panel is enabled/visible
+- fetched lyrics are cached at `~/.cache/covermint/lyrics`
+
 ## CLI reference
 
 This is the authoritative per-flag reference; the earlier sections stay higher level on purpose.
@@ -186,6 +204,21 @@ This is the authoritative per-flag reference; the earlier sections stay higher l
 --cache-max-files <n>       Cap the remote artwork cache entry count (default: 128)
 --cache-max-mb <n>          Cap the remote artwork cache size in MiB (default: 256)
 --layer background|bottom   Choose the layer-shell layer (`bottom` is more resilient if your wallpaper tool recreates background surfaces)
+--show-lyrics               Enable the separate live lyrics panel
+--hide-lyrics               Disable the separate live lyrics panel
+--lyrics-layout singleline|multiline Lyrics panel layout mode
+--lyrics-lines <n>          Number of visible lines in multiline mode
+--lyrics-panel-width <px>   Width of multiline lyrics panel
+--lyrics-smooth-scroll      Smoothly interpolate multiline scrolling between timestamps
+--lyrics-step-scroll        Disable interpolation (step between lines)
+--lyrics-font <family>      Lyrics font family
+--lyrics-font-size <px>     Lyrics font size in pixels
+--lyrics-color <css-color>  Lyrics text color
+--lyrics-active-color <css-color> Active/current line color (multiline)
+--lyrics-background <css-color> Lyrics panel background color
+--lyrics-on                 Send runtime command to show lyrics panel in an already-running instance
+--lyrics-off                Send runtime command to hide lyrics panel in an already-running instance
+--lyrics-toggle             Send runtime command to toggle lyrics panel in an already-running instance
 --init-config               Write the bundled example config to ~/.config/covermint/config.toml (fails if file already exists)
 --list-monitors             Print detected monitors and exit
 --list-players              Print detected MPRIS player names and exit
@@ -197,7 +230,9 @@ Use `--init-config` to install the starter config there.
 
 `auto` prefers an internal monitor and otherwise falls back to the first detected monitor. `external` prefers the first non-internal monitor and otherwise also falls back to the first detected monitor. If an explicit monitor selector cannot be resolved, Covermint lets the compositor choose and logs that fallback. Use `--list-monitors` to see the connector and model/manufacturer strings that matching can target.
 
-Cache note: the default bounded cache reduces repeated downloads while still trimming old or cold entries. Use `--no-cache` if you prefer stateless fetches instead of reuse.
+Cache note: the default bounded cache reduces repeated artwork downloads while still trimming old or cold entries. Use `--no-cache` if you prefer stateless artwork fetches instead of reuse.
+
+Lyrics cache note: synced lyrics are cached separately under `~/.cache/covermint/lyrics` and are only fetched from the network while the lyrics panel is enabled/visible.
 
 ## Current limitations
 
@@ -214,7 +249,8 @@ Cache note: the default bounded cache reduces repeated downloads while still tri
 - `slide` follows the nearest anchored edge; corners prefer the horizontal edge so right-corner placements get the intended side-swap motion
 - `cover` uses that same edge anchor too, but the incoming artwork slides in solid from that same edge above the fading outgoing artwork
 - deeper 3D transition notes live in `docs/transitions-3d.md`
-- metadata is currently template/config driven only (no CLI flags yet), and malformed template placeholders are ignored with startup warnings/fallback behavior
+- metadata overlays are currently template/config driven only (no dedicated metadata CLI flags yet), and malformed template placeholders are ignored with startup warnings/fallback behavior
+- synced lyrics depend on upstream LRCLIB matches; some tracks may legitimately return no synced lyrics
 
 ## Troubleshooting
 
