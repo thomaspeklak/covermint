@@ -83,7 +83,7 @@ pub(super) fn new_lyrics_widget(config: &Config, width: i32, height: i32) -> Lyr
         }
         LyricsLayout::MultiLine => {
             let lines_visible = config.lyrics.lines_visible.max(1);
-            let lines_visible = if lines_visible % 2 == 0 {
+            let lines_visible = if lines_visible.is_multiple_of(2) {
                 lines_visible + 1
             } else {
                 lines_visible

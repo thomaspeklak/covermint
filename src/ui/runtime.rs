@@ -575,9 +575,9 @@ impl UiRefreshState {
 
     fn apply_control_command(&self, command: crate::control::ControlCommand) {
         let next_visible = match command {
-            crate::control::ControlCommand::LyricsOn => true,
-            crate::control::ControlCommand::LyricsOff => false,
-            crate::control::ControlCommand::LyricsToggle => !*self.lyrics_visible.borrow(),
+            crate::control::ControlCommand::On => true,
+            crate::control::ControlCommand::Off => false,
+            crate::control::ControlCommand::Toggle => !*self.lyrics_visible.borrow(),
         };
 
         let mut visible = self.lyrics_visible.borrow_mut();

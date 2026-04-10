@@ -162,13 +162,11 @@ pub(crate) fn lookup_synced_lyrics(
 fn fetch_synced_lyrics(signature: &LyricsSignature) -> Option<SyncedLyrics> {
     if let Some(duration_seconds) = signature.duration_seconds
         && !signature.album_name.trim().is_empty()
-    {
-        if let Some(record) = fetch_get_style_record("/api/get-cached", signature, duration_seconds)
+        && let Some(record) = fetch_get_style_record("/api/get-cached", signature, duration_seconds)
             .or_else(|| fetch_get_style_record("/api/get", signature, duration_seconds))
-            && let Some(lyrics) = parse_synced_lyrics(record.synced_lyrics.as_deref())
-        {
-            return Some(lyrics);
-        }
+        && let Some(lyrics) = parse_synced_lyrics(record.synced_lyrics.as_deref())
+    {
+        return Some(lyrics);
     }
 
     fetch_search_best_match(signature)

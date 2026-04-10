@@ -4,25 +4,25 @@ const CONTROL_SOCKET_BASENAME: &str = "covermint-control";
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ControlCommand {
-    LyricsOn,
-    LyricsOff,
-    LyricsToggle,
+    On,
+    Off,
+    Toggle,
 }
 
 impl ControlCommand {
     fn as_wire(self) -> &'static str {
         match self {
-            Self::LyricsOn => "lyrics:on",
-            Self::LyricsOff => "lyrics:off",
-            Self::LyricsToggle => "lyrics:toggle",
+            Self::On => "lyrics:on",
+            Self::Off => "lyrics:off",
+            Self::Toggle => "lyrics:toggle",
         }
     }
 
     fn parse_wire(value: &str) -> Option<Self> {
         match value.trim() {
-            "lyrics:on" => Some(Self::LyricsOn),
-            "lyrics:off" => Some(Self::LyricsOff),
-            "lyrics:toggle" => Some(Self::LyricsToggle),
+            "lyrics:on" => Some(Self::On),
+            "lyrics:off" => Some(Self::Off),
+            "lyrics:toggle" => Some(Self::Toggle),
             _ => None,
         }
     }

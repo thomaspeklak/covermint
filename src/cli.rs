@@ -133,9 +133,9 @@ impl StartupAction {
                     config.lyrics.style.background_color =
                         next_arg(&mut args, "--lyrics-background")?
                 }
-                "--lyrics-on" => control_command = Some(ControlCommand::LyricsOn),
-                "--lyrics-off" => control_command = Some(ControlCommand::LyricsOff),
-                "--lyrics-toggle" => control_command = Some(ControlCommand::LyricsToggle),
+                "--lyrics-on" => control_command = Some(ControlCommand::On),
+                "--lyrics-off" => control_command = Some(ControlCommand::Off),
+                "--lyrics-toggle" => control_command = Some(ControlCommand::Toggle),
                 "--init-config" => init_config = true,
                 "--list-monitors" => list_monitors = true,
                 "--list-players" => list_players = true,
